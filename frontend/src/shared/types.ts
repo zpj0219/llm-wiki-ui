@@ -30,3 +30,28 @@ export type WikiStats = {
   entities: number;
   topics: number;
 };
+
+export type ChatRole = 'user' | 'assistant';
+
+export type ChatMessage = {
+  id: string;
+  role: ChatRole;
+  content: string;
+  timestamp: string;
+};
+
+export type ChatSession = {
+  id: string;
+  name: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChatSessionSummary = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+};

@@ -1,6 +1,8 @@
 # LLM-Wiki 知识库
 
-参照 [EdgeModelStudio](https://github.com/) 前端架构构建的 Web 版 LLM-Wiki 知识库应用。
+基于 **Karpathy LLM-Wiki** 方法论的 Web 版互链知识库应用：用 Markdown + wikilink 构建可复利增长的知识体系。
+
+参照 [EdgeModelStudio](https://github.com/) 前端架构构建。
 
 ## 技术栈
 
@@ -12,6 +14,7 @@
 
 ## 功能
 
+- **用户登录**：参照 EdgeModelStudio 登录流程（JWT Bearer + localStorage 会话）
 - **工作台**：Wiki 文件树浏览、Markdown 编辑/预览、反向链接
 - **关系图**：基于 wikilink 的知识图谱可视化
 - **搜索**：全文检索 Wiki 页面
@@ -48,6 +51,13 @@ npm run dev
 
 前端开发服务器（:5173）会通过 Vite 代理将 `/api` 请求转发到后端。
 
+**Mock 登录账号：**
+
+| 用户名 | 密码 |
+|--------|------|
+| admin | admin123 |
+| user | user123 |
+
 ## 项目结构
 
 ```
@@ -76,13 +86,16 @@ llm-wiki-ui/
 - **API 层**：`services/wikiApi.ts` 封装 REST 请求
 - **跨组件通信**：`CustomEvent`（如 `llm-wiki:open-page`）
 
-后端当前使用内存 Mock 数据，包含工业设备维修知识库示例（entities / topics / sources 结构）。后续可替换为真实文件系统或数据库。
+后端当前使用内存 Mock 数据，包含通用知识库示例（entities / topics / sources 结构）。后续可替换为真实文件系统或数据库。
 
 ## API 端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/health` | 健康检查 |
+| POST | `/api/auth/login` | 用户登录 |
+| GET | `/api/auth/me` | 当前用户（需 Bearer token） |
+| POST | `/api/auth/logout` | 登出 |
 | GET | `/api/wiki/entries` | 文件树列表 |
 | GET | `/api/wiki/pages/{path}` | 读取页面 |
 | PUT | `/api/wiki/pages/{path}` | 保存页面 |

@@ -99,13 +99,15 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div
           className={cn(
-            'border-r border-border flex flex-col shrink-0 transition-[width] duration-300',
+            'border-r border-border bg-muted/30 flex flex-col shrink-0 transition-[width] duration-300',
             sidebarCollapsed ? 'w-12' : 'w-64'
           )}
         >
-          <div className="p-2 flex items-center justify-between shrink-0 border-b border-border">
+          <div className="p-2.5 flex items-center justify-between shrink-0 border-b border-border bg-background/50">
             {!sidebarCollapsed && (
-              <span className="text-xs font-semibold text-muted-foreground uppercase px-2">页面</span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground px-2">
+                页面
+              </span>
             )}
             <Button
               variant="ghost"
@@ -216,9 +218,16 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
               </div>
             </Tabs>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
-              <FileText className="h-14 w-14 text-muted-foreground/35" strokeWidth={1.25} />
-              <p className="text-sm font-medium text-muted-foreground">请在左侧选择 Wiki 页面</p>
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
+                <FileText className="h-8 w-8 text-muted-foreground/50" strokeWidth={1.25} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">选择 Wiki 页面</p>
+                <p className="text-xs text-muted-foreground max-w-xs">
+                  从左侧文件树选择 Markdown 页面，可编辑、预览或查看反向链接
+                </p>
+              </div>
             </div>
           )}
         </div>

@@ -111,8 +111,8 @@ function TreeItem({
     <button
       type="button"
       className={cn(
-        'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs hover:bg-accent text-left',
-        isSelected && 'bg-accent font-medium'
+        'flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent text-left',
+        isSelected && 'bg-primary/10 text-primary font-medium ring-1 ring-primary/20'
       )}
       style={{ paddingLeft: `${depth * 12 + 20}px` }}
       onClick={() => onSelect(node.path)}
