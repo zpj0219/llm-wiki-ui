@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.75rem;
+    --container-background: 0 0% 98%;
+    --container-foreground: 240 5.3% 26.1%;
+    --container-border: 220 13% 91%;
+    --sidebar-width: 18rem;
+  }
+
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --container-background: 240 5.9% 10%;
+    --container-foreground: 240 4.8% 95.9%;
+    --container-border: 240 3.7% 15.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html, body, #root {
+    @apply h-full m-0 p-0;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+.prose-wiki {
+  @apply max-w-none text-sm leading-relaxed;
+}
+.prose-wiki h1 { @apply text-2xl font-bold mb-4 mt-2; }
+.prose-wiki h2 { @apply text-xl font-semibold mb-3 mt-4; }
+.prose-wiki h3 { @apply text-lg font-medium mb-2 mt-3; }
+.prose-wiki p { @apply mb-3; }
+.prose-wiki ul, .prose-wiki ol { @apply mb-3 pl-6; }
+.prose-wiki ul { @apply list-disc; }
+.prose-wiki ol { @apply list-decimal; }
+.prose-wiki table { @apply w-full border-collapse mb-4 text-sm; }
+.prose-wiki th, .prose-wiki td { @apply border border-border px-3 py-1.5; }
+.prose-wiki th { @apply bg-muted font-medium; }
+.prose-wiki a { @apply text-blue-600 hover:underline dark:text-blue-400; }
+.prose-wiki code { @apply bg-muted px-1 py-0.5 rounded text-xs font-mono; }
+.prose-wiki pre { @apply bg-muted p-3 rounded-md overflow-x-auto mb-3; }
+.prose-wiki blockquote { @apply border-l-4 border-muted-foreground/30 pl-4 italic text-muted-foreground; }
+.prose-wiki mark { @apply bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded; }
