@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Save, Loader2, Link2, Eye, Pencil, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,6 +21,23 @@ type WikiWorkbenchProps = {
   onOpenGraph?: (relPath: string) => void;
 };
 
+const WIKI_SIDEBAR_WIDTH_KEY = 'llm-wiki-workbench-sidebar-width';
+const WIKI_SIDEBAR_DEFAULT_WIDTH = 256;
+const WIKI_SIDEBAR_MIN_WIDTH = 200;
+const WIKI_SIDEBAR_MAX_WIDTH = 520;
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(WIKI_SIDEBAR_MAX_WIDTH, Math.max(WIKI_SIDEBAR_MIN_WIDTH, width));
+}
+
+function getInitialSidebarWidth(): number {
+  if (typeof window === 'undefined') return WIKI_SIDEBAR_DEFAULT_WIDTH;
+  const saved = Number(window.localStorage.getItem(WIKI_SIDEBAR_WIDTH_KEY));
+  return Number.isFinite(saved) && saved > 0
+    ? clampSidebarWidth(saved)
+    : WIKI_SIDEBAR_DEFAULT_WIDTH;
+}
+
 export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProps) {
   const [files, setFiles] = useState<WikiFileEntry[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -30,6 +47,13 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   const [saving, setSaving] = useState(false);
   const [backlinks, setBacklinks] = useState<string[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const sidebarResizeRef = useRef({
+    pointerId: 0,
+    startX: 0,
+    startWidth: WIKI_SIDEBAR_DEFAULT_WIDTH,
+  });
   const [error, setError] = useState<string | null>(null);
 
   const openPage = useCallback(async (relPath: string) => {
@@ -89,6 +113,56 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
 
   const dirty = selectedPath != null && draft !== savedContent;
 
+  const beginSidebarResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (sidebarCollapsed) return;
+      event.preventDefault();
+      sidebarResizeRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: sidebarWidth,
+      };
+      setIsResizingSidebar(true);
+    },
+    [sidebarCollapsed, sidebarWidth]
+  );
+
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+
+    const onPointerMove = (event: PointerEvent) => {
+      const state = sidebarResizeRef.current;
+      if (event.pointerId !== state.pointerId) return;
+      const next = clampSidebarWidth(state.startWidth + event.clientX - state.startX);
+      setSidebarWidth(next);
+    };
+
+    const endResize = (event: PointerEvent) => {
+      const state = sidebarResizeRef.current;
+      if (event.pointerId !== state.pointerId) return;
+      setIsResizingSidebar(false);
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', endResize);
+    window.addEventListener('pointercancel', endResize);
+
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', endResize);
+      window.removeEventListener('pointercancel', endResize);
+    };
+  }, [isResizingSidebar]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || sidebarCollapsed) return;
+    window.localStorage.setItem(WIKI_SIDEBAR_WIDTH_KEY, String(Math.round(sidebarWidth)));
+  }, [sidebarCollapsed, sidebarWidth]);
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {error && (
@@ -99,9 +173,11 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div
           className={cn(
-            'border-r border-border bg-muted/30 flex flex-col shrink-0 transition-[width] duration-300',
-            sidebarCollapsed ? 'w-12' : 'w-64'
+            'relative border-r border-border bg-muted/30 flex flex-col min-w-0 shrink-0',
+            !isResizingSidebar && 'transition-[width] duration-300',
+            sidebarCollapsed && 'w-12'
           )}
+          style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
         >
           <div className="p-2.5 flex items-center justify-between shrink-0 border-b border-border bg-background/50">
             {!sidebarCollapsed && (
@@ -119,8 +195,8 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
             </Button>
           </div>
           {!sidebarCollapsed && (
-            <ScrollArea className="flex-1">
-              <div className="p-2">
+            <ScrollArea className="flex-1 min-w-0">
+              <div className="p-2 pr-4">
                 <WikiFileTree
                   files={files}
                   selectedPath={selectedPath}
@@ -128,6 +204,22 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                 />
               </div>
             </ScrollArea>
+          )}
+
+          {!sidebarCollapsed && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整页面列表宽度"
+              title="拖拽调整页面列表宽度"
+              className={cn(
+                'absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize',
+                'after:absolute after:left-1/2 after:top-0 after:h-full after:w-px after:-translate-x-1/2 after:bg-transparent',
+                'hover:after:bg-primary/60',
+                isResizingSidebar && 'after:bg-primary'
+              )}
+              onPointerDown={beginSidebarResize}
+            />
           )}
         </div>
 

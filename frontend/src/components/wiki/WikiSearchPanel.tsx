@@ -46,15 +46,7 @@ export function WikiSearchPanel({ onOpenPage, refreshKey = 0 }: WikiSearchPanelP
 
   return (
     <ScrollArea className="flex-1 min-h-0">
-      <div className="p-6 max-w-3xl mx-auto space-y-6">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-            <Search className="h-5 w-5 text-primary" />
-            知识库搜索
-          </h2>
-          <p className="text-sm text-muted-foreground">全文检索 Wiki 页面标题与正文内容</p>
-        </div>
-
+      <div className="w-full px-4 py-4 space-y-4">
         {stats && (
           <Card className="shadow-sm">
             <CardHeader className="pb-3">

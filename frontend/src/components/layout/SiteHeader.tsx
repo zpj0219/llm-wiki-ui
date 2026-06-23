@@ -1,4 +1,4 @@
-import { BookOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw, Search } from 'lucide-react';
+import { BarChart3, BookOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -7,7 +7,7 @@ import { PAGES, PAGE_LABELS, LLM_WIKI_TABS, KARPATHY_WIKI_TAGLINE, type LLMWikiT
 const TAB_ICONS: Record<LLMWikiTab, typeof LayoutGrid> = {
   workbench: LayoutGrid,
   graph: Network,
-  search: Search,
+  search: BarChart3,
 };
 
 type SiteHeaderProps = {

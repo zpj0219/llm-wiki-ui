@@ -34,7 +34,7 @@ export type LLMWikiTab = 'workbench' | 'graph' | 'search';
 export const LLM_WIKI_TABS: { id: LLMWikiTab; label: string }[] = [
   { id: 'workbench', label: '工作台' },
   { id: 'graph', label: '关系图' },
-  { id: 'search', label: '搜索' },
+  { id: 'search', label: '概况' },
 ];
 
 /** 产品标语 — 统一文案 */
