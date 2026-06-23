@@ -45,6 +45,7 @@ export function LLMWikiPage({
           <WikiGraphView
             refreshKey={refreshKey}
             focusPath={graphFocusPath}
+            forceLocalGraph={Boolean(graphFocusPath)}
             onOpenPage={openGraphPage}
           />
         </TabsContent>

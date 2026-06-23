@@ -84,6 +84,22 @@
   @apply shadow-sm ring-1 ring-border/60;
 }
 
+[data-sidebar] {
+  scrollbar-width: thin;
+}
+
+[data-sidebar] *::-webkit-scrollbar {
+  width: 6px;
+}
+
+[data-sidebar] *::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-border;
+}
+
+[data-sidebar] *::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/40;
+}
+
 .prose-wiki {
   @apply max-w-none text-sm leading-relaxed;
 }

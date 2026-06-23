@@ -9,7 +9,7 @@ export type PageId = (typeof PAGES)[keyof typeof PAGES];
 
 export const PAGE_LABELS: Record<PageId, string> = {
   [PAGES.LOGIN]: '登录',
-  [PAGES.LLM_WIKI]: 'LLM-Wiki',
+  [PAGES.LLM_WIKI]: '知识库',
   [PAGES.CHAT]: '对话',
   [PAGES.SETTINGS]: '设置',
 };

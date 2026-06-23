@@ -70,20 +70,29 @@ export default function App() {
 
   return (
     <div className="app-shell flex h-full overflow-hidden">
-      <Sidebar
-        currentPage={currentPage}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        onPageChange={setCurrentPage}
-      />
+      <div
+        className="h-full shrink-0 transition-[max-width,width,min-width,opacity,transform] duration-250 ease-in-out will-change-[transform,width]"
+        style={{
+          width: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
+          minWidth: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
+          maxWidth: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
+          overflow: 'hidden',
+          opacity: sidebarCollapsed ? 0 : 1,
+          pointerEvents: sidebarCollapsed ? 'none' : 'auto',
+          transform: sidebarCollapsed ? 'translateX(-12px)' : 'translateX(0)',
+        }}
+      >
+        <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+      </div>
 
       <div className="app-main flex-1 flex flex-col min-w-0 m-3 rounded-xl border border-border bg-card overflow-hidden">
         <SiteHeader
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
           currentPage={currentPage}
           llmWikiTab={llmWikiTab}
           onLlmWikiTabChange={setLlmWikiTab}
           onRefresh={() => void handleRefresh()}
-          onOpenSettings={() => setCurrentPage(PAGES.SETTINGS)}
           onNewChat={() => setChatNewSessionTrigger((k) => k + 1)}
         />
 
