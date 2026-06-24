@@ -11,17 +11,22 @@ import {
 import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
   clearChatSession,
   createChatSession,
   deleteChatSession,
+  getChatConfig,
   getChatSession,
+  listChatModels,
   listChatSessions,
-  sendChatMessage,
+  streamChatMessage,
+  updateChatSessionModel,
 } from '@/services/chatApi';
-import type { ChatMessage, ChatSession, ChatSessionSummary } from '@shared/types';
+import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary } from '@shared/types';
+import { useChatHeaderExtras } from '@/contexts/ChatHeaderExtras';
 
 function truncateName(name: string, max = 20): string {
   return name.length > max ? `${name.slice(0, max)}…` : name;
@@ -48,6 +53,11 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chatProvider, setChatProvider] = useState<string>('…');
+  const [hermesConnected, setHermesConnected] = useState(false);
+  const [models, setModels] = useState<ChatModel[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState('hermes-agent');
+  const [defaultModel, setDefaultModel] = useState('hermes-agent');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -91,9 +101,31 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     setLoading(false);
   }, [currentSessionId]);
 
+  const chatReady = chatProvider === 'hermes' && hermesConnected;
+
+  const loadChatMeta = useCallback(async () => {
+    const [configRes, modelsRes] = await Promise.all([getChatConfig(), listChatModels()]);
+    if (configRes.success) {
+      if (configRes.provider) setChatProvider(configRes.provider);
+      setHermesConnected(Boolean(configRes.hermesConnected));
+      if (configRes.defaultModel) {
+        setDefaultModel(configRes.defaultModel);
+        setSelectedModelId((prev) =>
+          prev === 'hermes-agent' && configRes.defaultModel ? configRes.defaultModel : prev
+        );
+      }
+    }
+    if (modelsRes.success && modelsRes.models.length > 0) {
+      setModels(modelsRes.models);
+      if (modelsRes.defaultModel) setDefaultModel(modelsRes.defaultModel);
+    } else if (configRes.defaultModel) {
+      setModels([{ id: configRes.defaultModel, name: configRes.defaultModel }]);
+    }
+  }, []);
+
   const handleNewSession = useCallback(async () => {
     setError(null);
-    const res = await createChatSession();
+    const res = await createChatSession({ modelId: selectedModelId || defaultModel });
     if (!res.success || !res.session) {
       setError(res.error ?? '创建会话失败');
       return;
@@ -110,12 +142,14 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     ]);
     setCurrentSessionId(res.session.id);
     setCurrentSession(res.session);
+    if (res.session.modelId) setSelectedModelId(res.session.modelId);
     setInput('');
     textareaRef.current?.focus();
-  }, []);
+  }, [defaultModel, selectedModelId]);
 
   useEffect(() => {
     void loadSessions();
+    void loadChatMeta();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,7 +179,51 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
       return;
     }
     setCurrentSession(res.session);
+    if (res.session.modelId) setSelectedModelId(res.session.modelId);
   };
+
+  const handleModelChange = useCallback(async (modelId: string) => {
+    setSelectedModelId(modelId);
+    if (!currentSessionId) return;
+    setError(null);
+    const res = await updateChatSessionModel(currentSessionId, modelId);
+    if (!res.success) {
+      setError(res.error ?? '更新模型失败');
+      return;
+    }
+    if (res.session) setCurrentSession(res.session);
+  }, [currentSessionId]);
+
+  const { setExtras: setChatHeaderExtras } = useChatHeaderExtras();
+
+  useEffect(() => {
+    const options =
+      models.length > 0
+        ? models.map((m) => ({ value: m.id, label: m.name }))
+        : [{ value: defaultModel, label: defaultModel }];
+    setChatHeaderExtras(
+      <div className="flex w-full max-w-[16rem] items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground shrink-0">模型</span>
+        <Select
+          value={selectedModelId || defaultModel}
+          onValueChange={(v) => void handleModelChange(v)}
+          options={options}
+          disabled={!chatReady || sending}
+          size="sm"
+          className="flex-1 min-w-0"
+        />
+      </div>
+    );
+    return () => setChatHeaderExtras(null);
+  }, [
+    setChatHeaderExtras,
+    selectedModelId,
+    defaultModel,
+    models,
+    chatReady,
+    sending,
+    handleModelChange,
+  ]);
 
   const handleDeleteSession = async (sessionId: string) => {
     if (!window.confirm('确定删除该对话？')) return;
@@ -194,7 +272,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
 
     let sessionId = currentSessionId;
     if (!sessionId) {
-      const created = await createChatSession();
+      const created = await createChatSession({ modelId: selectedModelId || defaultModel });
       if (!created.success || !created.session) {
         setError(created.error ?? '创建会话失败');
         return;
@@ -202,6 +280,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
       sessionId = created.session.id;
       setCurrentSessionId(sessionId);
       setCurrentSession(created.session);
+      if (created.session.modelId) setSelectedModelId(created.session.modelId);
       setSessions((prev) => [
         {
           id: created.session!.id,
@@ -219,47 +298,86 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     setInput('');
     requestAnimationFrame(() => adjustTextareaHeight());
 
+    const userMsgId = `user-${Date.now()}`;
+    const assistantId = `asst-${Date.now()}`;
+    const now = new Date().toISOString();
     const optimisticUser: ChatMessage = {
-      id: `temp-${Date.now()}`,
+      id: userMsgId,
       role: 'user',
       content: text,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     };
     setCurrentSession((prev) =>
       prev
-        ? { ...prev, messages: [...prev.messages, optimisticUser] }
+        ? {
+            ...prev,
+            messages: [
+              ...prev.messages,
+              optimisticUser,
+              { id: assistantId, role: 'assistant', content: '', timestamp: now },
+            ],
+          }
         : {
             id: sessionId!,
             name: '新对话',
-            messages: [optimisticUser],
-            createdAt: optimisticUser.timestamp,
-            updatedAt: optimisticUser.timestamp,
+            messages: [
+              optimisticUser,
+              { id: assistantId, role: 'assistant', content: '', timestamp: now },
+            ],
+            createdAt: now,
+            updatedAt: now,
           }
     );
 
-    const res = await sendChatMessage(sessionId, text);
+    const streamRes = await streamChatMessage(sessionId, text, (event) => {
+      if (event.type === 'started') {
+        setCurrentSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.id === userMsgId ? event.userMessage : m
+                ),
+              }
+            : prev
+        );
+      } else if (event.type === 'delta') {
+        setCurrentSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.id === assistantId ? { ...m, content: m.content + event.delta } : m
+                ),
+              }
+            : prev
+        );
+      } else if (event.type === 'done') {
+        setCurrentSession(event.session);
+        setSessions((prev) => {
+          const summary = {
+            id: event.session.id,
+            name: event.session.name,
+            createdAt: event.session.createdAt,
+            updatedAt: event.session.updatedAt,
+            messageCount: event.session.messages.length,
+          };
+          const exists = prev.some((s) => s.id === summary.id);
+          if (!exists) return [summary, ...prev];
+          return prev.map((s) => (s.id === summary.id ? summary : s));
+        });
+      } else if (event.type === 'error') {
+        setError(event.message);
+      }
+    });
+
     setSending(false);
 
-    if (!res.success || !res.session) {
-      setError(res.error ?? '发送失败');
+    if (!streamRes.success) {
+      setError(streamRes.error ?? '发送失败');
       setInput(text);
       void loadSessions(sessionId);
-      return;
     }
-
-    setCurrentSession(res.session);
-    setSessions((prev) => {
-      const exists = prev.some((s) => s.id === res.session!.id);
-      const summary = {
-        id: res.session!.id,
-        name: res.session!.name,
-        createdAt: res.session!.createdAt,
-        updatedAt: res.session!.updatedAt,
-        messageCount: res.session!.messages.length,
-      };
-      if (!exists) return [summary, ...prev];
-      return prev.map((s) => (s.id === summary.id ? summary : s));
-    });
   };
 
   const messages = currentSession?.messages ?? [];
@@ -368,6 +486,14 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             {error}
           </div>
         )}
+        {!chatReady && chatProvider !== '…' && (
+          <div className="shrink-0 mx-4 mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+            Hermes Gateway 未连接。请在项目根目录 `.env` 中设置{' '}
+            <code className="text-xs bg-muted px-1 rounded">HERMES_API_KEY</code>（与 hermes-data 的{' '}
+            <code className="text-xs bg-muted px-1 rounded">API_SERVER_KEY</code> 一致），并确保 Gateway
+            运行在 <code className="text-xs bg-muted px-1 rounded">:8642</code>。
+          </div>
+        )}
 
         <ScrollArea className="flex-1 min-h-0">
           <div className="w-full px-4 py-6 space-y-6">
@@ -381,13 +507,25 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                 <div className="flex size-12 items-center justify-center rounded-xl bg-primary/5 text-primary mb-4">
                   <MessageSquare className="h-6 w-6" />
                 </div>
-                <h2 className="text-lg font-medium mb-1">开始对话</h2>
+                <h2 className="text-lg font-medium mb-1">Hermes Agent 对话</h2>
                 <p className="text-sm text-muted-foreground max-w-sm">
-                  输入问题并发送，助手将以 Markdown 格式回复（当前为 Mock 演示）。
+                  通过 Hermes Gateway 流式对话（OpenWebUI 兼容 /v1/chat/completions）。
+                  {chatProvider !== '…' && (
+                    <span className="block mt-1 text-xs opacity-80">
+                      后端：{chatReady ? 'Hermes Agent' : 'Hermes 未连接'}
+                      {selectedModelId ? ` · 模型 ${selectedModelId}` : ''}
+                    </span>
+                  )}
                 </p>
               </div>
             ) : (
-              messages.map((message) => (
+              messages.map((message, index) => {
+                const isStreamingReply =
+                  sending &&
+                  message.role === 'assistant' &&
+                  index === messages.length - 1;
+
+                return (
                 <div
                   key={message.id}
                   className={cn(
@@ -397,7 +535,11 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                 >
                   {message.role === 'assistant' && (
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mt-0.5">
-                      <MessageSquare className="h-4 w-4" />
+                      {isStreamingReply ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MessageSquare className="h-4 w-4" />
+                      )}
                     </div>
                   )}
                   <div
@@ -410,6 +552,11 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                   >
                     {message.role === 'user' ? (
                       <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    ) : isStreamingReply && !message.content ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        <span>正在回复…</span>
+                      </div>
                     ) : (
                       <ChatMarkdown content={message.content} />
                     )}
@@ -423,17 +570,8 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                     </p>
                   </div>
                 </div>
-              ))
-            )}
-            {sending && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
-                <div className="rounded-xl px-4 py-3 bg-muted/60 border border-border text-sm text-muted-foreground">
-                  正在回复…
-                </div>
-              </div>
+                );
+              })
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -458,8 +596,8 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                     void handleSend();
                   }
                 }}
-                placeholder="输入消息…"
-                disabled={sending}
+                placeholder={chatReady ? '输入消息…' : '请先配置 Hermes Gateway…'}
+                disabled={sending || !chatReady}
                 rows={1}
                 className="min-h-[52px] max-h-[200px] resize-none overflow-y-auto border-0 bg-transparent px-4 pt-3.5 pb-[52px] text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
               />
@@ -502,7 +640,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                     size="icon"
                     className="size-9 rounded-full shadow-sm"
                     onClick={() => void handleSend()}
-                    disabled={!input.trim() || sending}
+                    disabled={!input.trim() || sending || !chatReady}
                     title="发送"
                   >
                     {sending ? (

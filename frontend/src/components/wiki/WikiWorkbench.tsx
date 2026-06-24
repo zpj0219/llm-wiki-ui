@@ -225,15 +225,15 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {selectedPath ? (
-            <Tabs defaultValue="edit" className="flex-1 flex flex-col min-h-0">
+            <Tabs defaultValue="preview" className="flex-1 flex flex-col min-h-0">
               <div className="shrink-0 border-b border-border">
                 <div className="flex items-center justify-between gap-2 px-4 pt-2 pb-2 flex-wrap">
                   <TabsList className="h-9">
-                    <TabsTrigger value="edit" className="text-xs">
-                      <Pencil className="h-3 w-3 mr-1" />编辑
-                    </TabsTrigger>
                     <TabsTrigger value="preview" className="text-xs">
                       <Eye className="h-3 w-3 mr-1" />预览
+                    </TabsTrigger>
+                    <TabsTrigger value="edit" className="text-xs">
+                      <Pencil className="h-3 w-3 mr-1" />编辑
                     </TabsTrigger>
                     <TabsTrigger value="backlinks" className="text-xs">
                       <Link2 className="h-3 w-3 mr-1" />反向链接 ({backlinks.length})
@@ -317,7 +317,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
               <div className="space-y-1">
                 <p className="text-sm font-medium">选择 Wiki 页面</p>
                 <p className="text-xs text-muted-foreground max-w-xs">
-                  从左侧文件树选择 Markdown 页面，可编辑、预览或查看反向链接
+                  从左侧文件树选择 Markdown 页面；上传原件请点击右上角「上传原件」
                 </p>
               </div>
             </div>

@@ -15,7 +15,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
             <BookOpen className="size-5" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-lg font-semibold tracking-tight">LLM-Wiki</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Hermes Agent</h1>
             <p className="text-sm text-muted-foreground">{KARPATHY_WIKI_TAGLINE}</p>
           </div>
         </div>

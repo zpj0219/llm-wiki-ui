@@ -1,11 +1,11 @@
-"""认证 API 路由（Mock）"""
+"""认证 API 路由"""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from mock_auth import authenticate, get_user_by_token, issue_token, revoke_token
+from auth_store import authenticate, get_user_by_token, issue_token, revoke_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 

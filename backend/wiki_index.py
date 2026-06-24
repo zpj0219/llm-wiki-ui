@@ -6,7 +6,7 @@ import re
 import time
 from typing import Any
 
-from mock_data import get_all_pages
+from knowledge_store import get_all_pages
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]")
 

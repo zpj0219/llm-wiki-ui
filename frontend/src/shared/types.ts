@@ -29,6 +29,8 @@ export type WikiStats = {
   sources: number;
   entities: number;
   topics: number;
+  fulltextMd?: number;
+  originalsPending?: number;
 };
 
 export type ChatRole = 'user' | 'assistant';
@@ -40,12 +42,18 @@ export type ChatMessage = {
   timestamp: string;
 };
 
+export type ChatModel = {
+  id: string;
+  name: string;
+};
+
 export type ChatSession = {
   id: string;
   name: string;
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  modelId?: string;
 };
 
 export type ChatSessionSummary = {
@@ -54,4 +62,5 @@ export type ChatSessionSummary = {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+  modelId?: string;
 };

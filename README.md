@@ -1,109 +1,144 @@
-# LLM-Wiki 知识库
+# Hermes Agent 前端
 
-基于 **Karpathy LLM-Wiki** 方法论的 Web 版互链知识库应用：用 Markdown + wikilink 构建可复利增长的知识体系。
+Hongtai AI Hub 的 **Hermes Agent 客户前端**：知识库浏览、原件上传、OpenWebUI 风格对话。
 
-参照 [EdgeModelStudio](https://github.com/) 前端架构构建。
+对接 [`hermes-data`](../hermes-data) 部署的 Hermes Agent 与共享知识库卷。
 
-## 技术栈
+## 架构
 
-| 层级 | 技术 |
+```
+┌─────────────────┐     /api/*      ┌──────────────────┐
+│  React UI :3000 │ ───────────────►│  BFF FastAPI :8000│
+└─────────────────┘                 └────────┬─────────┘
+                                             │
+                    ┌────────────────────────┼────────────────────────┐
+                    │                        │                        │
+                    ▼                        ▼                        ▼
+         knowledge-base/          Hermes Gateway :8642        SQLite (app.db)
+    raw/originals · wiki/          Sessions + Chat/SSE     用户 · Token · 对话
+                    │
+                    ▼
+         Hermes Cron 定时任务（hermes-data）
+    originals → fulltext → wiki ingest → qmd
+```
+
+| 能力 | 实现 |
 |------|------|
-| 前端 | React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui 风格组件 |
-| 后端 | Python FastAPI（当前为 Mock 数据） |
-| 部署 | Docker Compose（Nginx + Uvicorn） |
+| 原件上传 | `POST /api/upload/originals` → `raw/originals/maintenance/{category}/` |
+| 知识库浏览 | 读取 `hermes-data` 挂载的 `wiki/`、`raw/` 目录 |
+| 对话 | OpenWebUI 兼容 `/v1/chat/completions`（模型 `hermes-agent`，BFF 管理本地会话） |
+| 应用数据 | SQLite — 用户认证、Token、本地对话会话与消息 |
+| 后台处理 | 由 hermes-data 中 Cron Blueprint 完成，本应用不重复实现 |
 
-## 功能
+## 前置条件
 
-- **用户登录**：参照 EdgeModelStudio 登录流程（JWT Bearer + localStorage 会话）
-- **工作台**：Wiki 文件树浏览、Markdown 编辑/预览、反向链接
-- **关系图**：基于 wikilink 的知识图谱可视化
-- **搜索**：全文检索 Wiki 页面
+1. 启动 **hermes-data** Hermes 容器（Gateway `:8642`、Dashboard `:9119`）
+2. 复制并配置环境变量：
+
+```bash
+cp .env.example .env
+# HERMES_API_KEY 与 hermes-data/.env 中 API_SERVER_KEY 一致
+```
 
 ## 快速开始
 
-### Docker Compose（推荐）
+### Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
 - 前端：http://localhost:3000
-- 后端 API：http://localhost:8000
-- API 文档：http://localhost:8000/docs
+- BFF API：http://localhost:8000/docs
 
 ### 本地开发
 
-**后端：**
+**1. Hermes（hermes-data）**
+
+```bash
+cd ../hermes-data
+docker compose up -d
+```
+
+**2. BFF 后端**
 
 ```bash
 cd backend
 pip install -r requirements.txt
+
+# Windows 默认知识库路径
+set KNOWLEDGE_BASE_ROOT=C:\Docker\hermes-data\data\home\Documents\knowledge-base
+set HERMES_API_KEY=与-hermes-data-API_SERVER_KEY-相同
+set HERMES_GATEWAY_URL=http://localhost:8642
+# 可选：DEFAULT_CHAT_MODEL=hermes-agent
+
 uvicorn main:app --reload --port 8000
 ```
 
-**前端：**
+**3. 前端**
 
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev   # http://localhost:5173
 ```
 
-前端开发服务器（:5173）会通过 Vite 代理将 `/api` 请求转发到后端。
+默认账号：`admin` / `admin123`
 
-**Mock 登录账号：**
+### Hermes 对话配置（OpenWebUI 同款）
 
-| 用户名 | 密码 |
-|--------|------|
-| admin | admin123 |
-| user | user123 |
+1. 启动 hermes-data：`docker compose up -d`（Gateway `:8642`）
+2. 复制 `.env.example` → `.env`，设置 `HERMES_API_KEY` 与 hermes-data 的 `API_SERVER_KEY` 一致
+3. 前端 Chat 页选择模型（通常为 `hermes-agent`）即可流式对话
 
-## 项目结构
+与 OpenWebUI 的差异：本应用用 BFF 管理本地 SQLite 会话，对话走 `/v1/chat/completions` 并携带完整历史消息。
 
-```
-llm-wiki-ui/
-├── frontend/          # React 前端
-│   ├── src/
-│   │   ├── components/   # UI 与 Wiki 组件
-│   │   ├── pages/        # 页面
-│   │   ├── services/     # API 客户端
-│   │   └── shared/       # 常量与类型
-│   └── Dockerfile
-├── backend/           # FastAPI 后端
-│   ├── main.py
-│   ├── mock_data.py   # Mock 知识库数据
-│   ├── wiki_index.py  # 索引/搜索/图谱
-│   └── routers/
-└── docker-compose.yml
-```
+## 原件上传路径
 
-## 架构说明
+参照 `hermes-data` 中 `.wiki-schema.md`：
 
-前端架构参照 EdgeModelStudio：
+| 用户操作 | 写入路径 |
+|----------|----------|
+| 上传（默认） | `raw/originals/maintenance/{manuals\|procedures\|records\|faults}/` |
+| 上传至 inbox | `raw/inbox/` |
 
-- **状态路由**：`PAGES` 常量 + `App.tsx` 页面切换（无 react-router）
-- **布局**：Sidebar + SiteHeader + 圆角主内容区
-- **API 层**：`services/wikiApi.ts` 封装 REST 请求
-- **跨组件通信**：`CustomEvent`（如 `llm-wiki:open-page`）
+上传后由 Hermes 定时任务自动处理：
 
-后端当前使用内存 Mock 数据，包含通用知识库示例（entities / topics / sources 结构）。后续可替换为真实文件系统或数据库。
+- `ht-wiki-sync-fulltext` — 原件 → fulltext MD
+- `ht-wiki-batch-ingest` — fulltext → wiki 结构化页
+- `ht-wiki-qmd-index` — QMD 全文索引
 
 ## API 端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/health` | 健康检查 |
-| POST | `/api/auth/login` | 用户登录 |
-| GET | `/api/auth/me` | 当前用户（需 Bearer token） |
-| POST | `/api/auth/logout` | 登出 |
-| GET | `/api/wiki/entries` | 文件树列表 |
-| GET | `/api/wiki/pages/{path}` | 读取页面 |
-| PUT | `/api/wiki/pages/{path}` | 保存页面 |
-| GET | `/api/wiki/backlinks/{path}` | 反向链接 |
-| POST | `/api/wiki/search` | 全文搜索 |
-| GET | `/api/wiki/graph` | 关系图数据 |
-| GET | `/api/wiki/stats` | 知识库统计 |
-| POST | `/api/wiki/refresh` | 刷新索引 |
+| GET | `/api/health` | 健康检查 + 知识库/Hermes 配置 |
+| POST | `/api/upload/originals` | 上传原件（multipart） |
+| GET | `/api/wiki/*` | 知识库浏览/编辑/搜索/图谱 |
+| GET | `/api/chat/config` | 对话后端（hermes / unavailable） |
+| POST | `/api/chat/sessions/{id}/messages/stream` | 流式对话（SSE） |
+
+## 项目结构
+
+```
+llm-wiki-ui/
+├── backend/
+│   ├── config.py           # 知识库路径、Hermes Gateway、SQLite
+│   ├── database.py         # SQLite 初始化与连接
+│   ├── auth_store.py       # 用户认证与 Token
+│   ├── chat_store.py       # 对话会话持久化
+│   ├── knowledge_store.py  # 文件系统读写
+│   ├── hermes_client.py    # Hermes Sessions/Chat 客户端
+│   ├── chat_service.py     # 本地会话 + Hermes 绑定
+│   └── routers/
+│       ├── upload.py
+│       ├── wiki.py
+│       └── chat.py
+└── frontend/
+    └── src/
+        ├── components/wiki/WikiUploadPanel.tsx
+        └── services/uploadApi.ts · chatApi.ts
+```
 
 ## License
 

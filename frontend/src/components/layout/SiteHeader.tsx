@@ -1,8 +1,10 @@
-import { BarChart3, BookOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw } from 'lucide-react';
+import { BarChart3, BookOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 import { PAGES, PAGE_LABELS, LLM_WIKI_TABS, KARPATHY_WIKI_TAGLINE, type LLMWikiTab, type PageId } from '@shared/constants';
+import { useChatHeaderExtrasSlot } from '@/contexts/ChatHeaderExtras';
 
 const TAB_ICONS: Record<LLMWikiTab, typeof LayoutGrid> = {
   workbench: LayoutGrid,
@@ -18,6 +20,7 @@ type SiteHeaderProps = {
   onLlmWikiTabChange: (tab: LLMWikiTab) => void;
   onRefresh: () => void;
   onNewChat?: () => void;
+  onUploadFile?: () => void;
 };
 
 export function SiteHeader({
@@ -28,14 +31,23 @@ export function SiteHeader({
   onLlmWikiTabChange,
   onRefresh,
   onNewChat,
+  onUploadFile,
 }: SiteHeaderProps) {
   const pageLabel = sidebarCollapsed ? 'LLM-Wiki' : (PAGE_LABELS[currentPage] ?? currentPage);
   const PageIcon =
     currentPage === PAGES.CHAT ? MessageSquare : BookOpen;
+  const chatHeaderExtras = useChatHeaderExtrasSlot();
 
   return (
-    <header className="shrink-0 border-b border-border bg-background/80 px-4 py-3 flex items-center justify-between gap-4 flex-wrap backdrop-blur-sm">
-      <div className="flex items-center gap-2 min-w-0">
+    <header
+      className={cn(
+        'shrink-0 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-sm',
+        currentPage === PAGES.CHAT
+          ? 'grid grid-cols-[minmax(0,1fr)_minmax(160px,16rem)_minmax(0,1fr)] items-center gap-4'
+          : 'flex items-center justify-between gap-4 flex-wrap'
+      )}
+    >
+      <div className="flex items-center gap-2 min-w-0 justify-self-start">
         <SidebarTrigger
           collapsed={sidebarCollapsed}
           onToggle={onToggleSidebar}
@@ -53,6 +65,12 @@ export function SiteHeader({
         </div>
       </div>
 
+      {currentPage === PAGES.CHAT && chatHeaderExtras && (
+        <div className="flex w-full min-w-0 justify-center justify-self-center px-2">
+          {chatHeaderExtras}
+        </div>
+      )}
+
       {currentPage === PAGES.LLM_WIKI && !sidebarCollapsed && (
         <Tabs value={llmWikiTab} onValueChange={(v) => onLlmWikiTabChange(v as LLMWikiTab)}>
           <TabsList className="h-9">
@@ -69,16 +87,16 @@ export function SiteHeader({
         </Tabs>
       )}
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0 justify-self-end">
         {currentPage === PAGES.LLM_WIKI && (
           <>
             <Button variant="outline" size="sm" onClick={onRefresh}>
               <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
               刷新
             </Button>
-            <Button variant="outline" size="sm" disabled title="后续版本支持">
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              新建
+            <Button variant="outline" size="sm" onClick={onUploadFile}>
+              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              上传原件
             </Button>
           </>
         )}

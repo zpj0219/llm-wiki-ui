@@ -1,11 +1,11 @@
-"""Wiki API 路由"""
+"""Wiki API 路由 — 读取 hermes-data 知识库"""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from mock_data import get_page, get_stats, list_entries, save_page
+from knowledge_store import get_page, get_stats, kb_root, list_entries, save_page
 from wiki_index import (
     build_graph,
     get_backlinks,
@@ -27,7 +27,11 @@ class SearchRequest(BaseModel):
 
 @router.get("/entries")
 def api_list_entries():
-    return {"success": True, "files": list_entries(), "root": "/data/knowledge-base"}
+    return {
+        "success": True,
+        "files": list_entries(),
+        "root": str(kb_root()),
+    }
 
 
 @router.get("/stats")
@@ -47,9 +51,10 @@ def api_get_page(path: str):
 @router.put("/pages/{path:path}")
 def api_save_page(path: str, body: SavePageRequest):
     rel_path = path.replace("\\", "/")
-    if get_page(rel_path) is None:
-        raise HTTPException(status_code=404, detail=f"页面不存在: {rel_path}")
-    save_page(rel_path, body.content)
+    try:
+        save_page(rel_path, body.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     invalidate_index()
     return {"success": True, "relPath": rel_path}
 

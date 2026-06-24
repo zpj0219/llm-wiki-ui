@@ -51,7 +51,7 @@ export function WikiSearchPanel({ onOpenPage, refreshKey = 0 }: WikiSearchPanelP
           <Card className="shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium">知识库概况</CardTitle>
-              <CardDescription className="text-xs">Mock 数据统计</CardDescription>
+              <CardDescription className="text-xs">知识库文件统计</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

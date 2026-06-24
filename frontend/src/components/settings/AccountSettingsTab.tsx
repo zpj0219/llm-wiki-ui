@@ -23,7 +23,7 @@ export function AccountSettingsTab({ onLogout }: AccountSettingsTabProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">当前账户</CardTitle>
-          <CardDescription>登录会话信息（Mock 认证）</CardDescription>
+          <CardDescription>登录会话信息</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
