@@ -10,9 +10,10 @@ import {
   readWikiPage,
   writeWikiPage,
   getWikiBacklinks,
+  getOriginalsStatus,
 } from '@/services/wikiApi';
 import { uploadOriginal } from '@/services/uploadApi';
-import type { WikiFileEntry } from '@shared/types';
+import type { OriginalsFileStatus, WikiFileEntry } from '@shared/types';
 import { WikiFileTree } from './WikiFileTree';
 import { WikiMarkdownPreview } from './WikiMarkdownPreview';
 import { WikiPathBreadcrumb } from './WikiPathBreadcrumb';
@@ -56,6 +57,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
     startWidth: WIKI_SIDEBAR_DEFAULT_WIDTH,
   });
   const [error, setError] = useState<string | null>(null);
+  const [statusMap, setStatusMap] = useState<Map<string, OriginalsFileStatus>>(new Map());
 
   const openPage = useCallback(async (relPath: string) => {
     setSelectedPath(relPath);
@@ -79,11 +81,17 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   }, []);
 
   const refreshTree = useCallback(async () => {
-    const res = await listWikiEntries();
-    if (res.success) {
-      setFiles(res.files);
+    const [entriesRes, statusRes] = await Promise.all([
+      listWikiEntries(),
+      getOriginalsStatus(),
+    ]);
+    if (entriesRes.success) {
+      setFiles(entriesRes.files);
     } else {
-      setError(res.error ?? '加载文件树失败');
+      setError(entriesRes.error ?? '加载文件树失败');
+    }
+    if (statusRes.success && statusRes.statuses) {
+      setStatusMap(new Map(Object.entries(statusRes.statuses)));
     }
   }, []);
 
@@ -235,6 +243,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                   selectedPath={selectedPath}
                   onSelect={(p) => void openPage(p)}
                   onFileDrop={(files, targetDir) => handleFileDrop(files, targetDir)}
+                  statusMap={statusMap}
                 />
               </div>
             </ScrollArea>

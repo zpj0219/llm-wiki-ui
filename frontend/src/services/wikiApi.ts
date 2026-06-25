@@ -1,5 +1,6 @@
 import { requestJson } from './api';
 import type {
+  OriginalsFileStatus,
   WikiFileEntry,
   WikiGraphEdge,
   WikiGraphNode,
@@ -90,4 +91,19 @@ export async function getWikiStats(): Promise<WikiStats> {
 
 export async function refreshWikiIndex(): Promise<void> {
   await requestJson('/api/wiki/refresh', { method: 'POST' });
+}
+
+export async function getOriginalsStatus(): Promise<{
+  success: boolean;
+  statuses?: Record<string, OriginalsFileStatus>;
+  error?: string;
+}> {
+  try {
+    const res = await requestJson<
+      ApiResult<{ statuses: Record<string, OriginalsFileStatus> }>
+    >('/api/wiki/originals-status');
+    return { success: true, statuses: res.statuses };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }

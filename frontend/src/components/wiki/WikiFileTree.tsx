@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
-import { ChevronRight, ChevronDown, FileText, File, Folder, FolderUp, Loader2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ChevronRight, ChevronDown, Clock, FileCheck, FileText, File, Folder, FolderUp, Loader2, Sparkles } from 'lucide-react';
 import { cn, isOriginalsSubDir, isWikiDirMarkdown, normPath } from '@/lib/utils';
-import type { WikiFileEntry } from '@shared/types';
+import type { OriginalsFileStatus, WikiFileEntry } from '@shared/types';
 
 type TreeNode = {
   name: string;
@@ -90,12 +91,14 @@ function TreeItem({
   selectedPath,
   onSelect,
   onFileDrop,
+  statusMap,
 }: {
   node: TreeNode;
   depth: number;
   selectedPath: string | null;
   onSelect: (path: string) => void;
   onFileDrop?: (files: FileList, targetDir: string) => Promise<void>;
+  statusMap?: Map<string, OriginalsFileStatus>;
 }) {
   const [open, setOpen] = useState(depth < 2);
   const [dragOver, setDragOver] = useState(false);
@@ -184,6 +187,7 @@ function TreeItem({
               selectedPath={selectedPath}
               onSelect={onSelect}
               onFileDrop={onFileDrop}
+              statusMap={statusMap}
             />
           ))}
       </div>
@@ -191,6 +195,21 @@ function TreeItem({
   }
 
   const isWikiFile = isWikiDirMarkdown(node.path);
+  const fileStatus = !isWikiFile ? statusMap?.get(node.path) : undefined;
+  const iconRef = useRef<HTMLSpanElement>(null);
+  const [tipRect, setTipRect] = useState<DOMRect | null>(null);
+
+  const showTip = useCallback(() => {
+    if (iconRef.current) setTipRect(iconRef.current.getBoundingClientRect());
+  }, []);
+  const hideTip = useCallback(() => setTipRect(null), []);
+
+  const stageLabel =
+    fileStatus?.stage === 'uploaded'
+      ? '待处理 — 等待全文提取'
+      : fileStatus?.stage === 'fulltext'
+        ? '已提取全文 — 等待实体生成'
+        : '已生成实体 — 知识条目已可用';
 
   return (
     <button
@@ -210,6 +229,37 @@ function TreeItem({
         <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
       )}
       <span className="truncate">{isWikiFile ? node.name.replace(/\.md$/i, '') : node.name}</span>
+      {fileStatus && (
+        <span
+          ref={iconRef}
+          className="shrink-0 ml-auto"
+          onMouseEnter={showTip}
+          onMouseLeave={hideTip}
+        >
+          {fileStatus.stage === 'uploaded' ? (
+            <Clock className="h-3.5 w-3.5 text-amber-500" />
+          ) : fileStatus.stage === 'fulltext' ? (
+            <FileCheck className="h-3.5 w-3.5 text-blue-500" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5 text-green-500" />
+          )}
+        </span>
+      )}
+      {tipRect &&
+        fileStatus &&
+        createPortal(
+          <div
+            className="fixed z-[9999] pointer-events-none whitespace-nowrap rounded-md bg-white px-2.5 py-1.5 text-[11px] text-gray-900 shadow-lg border dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
+            style={{
+              left: tipRect.left + tipRect.width / 2,
+              top: tipRect.top - 6,
+              transform: 'translate(-50%, -100%)',
+            }}
+          >
+            {stageLabel}
+          </div>,
+          document.body,
+        )}
     </button>
   );
 }
@@ -219,9 +269,10 @@ type WikiFileTreeProps = {
   selectedPath: string | null;
   onSelect: (path: string) => void;
   onFileDrop?: (files: FileList, targetDir: string) => Promise<void>;
+  statusMap?: Map<string, OriginalsFileStatus>;
 };
 
-export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop }: WikiFileTreeProps) {
+export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop, statusMap }: WikiFileTreeProps) {
   const tree = useMemo(() => buildWikiTree(files), [files]);
 
   if (tree.length === 0) {
@@ -238,6 +289,7 @@ export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop }: Wiki
           selectedPath={selectedPath}
           onSelect={onSelect}
           onFileDrop={onFileDrop}
+          statusMap={statusMap}
         />
       ))}
     </div>

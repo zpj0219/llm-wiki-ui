@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from knowledge_store import get_page, get_stats, kb_root, list_entries, save_page
+from knowledge_store import get_all_originals_status, get_page, get_stats, kb_root, list_entries, save_page
 from wiki_index import (
     build_graph,
     get_backlinks,
@@ -80,3 +80,8 @@ def api_graph():
 def api_refresh():
     invalidate_index()
     return {"success": True, "message": "索引已刷新"}
+
+
+@router.get("/originals-status")
+def api_originals_status():
+    return {"success": True, "statuses": get_all_originals_status()}
