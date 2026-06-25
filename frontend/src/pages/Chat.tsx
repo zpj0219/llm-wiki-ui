@@ -6,9 +6,11 @@ import {
   MessageSquare,
   Plus,
   Send,
+  Square,
   Trash2,
 } from 'lucide-react';
 import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
+import { ChatThinkingSteps } from '@/components/chat/ChatThinkingSteps';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select } from '@/components/ui/select';
@@ -25,7 +27,7 @@ import {
   streamChatMessage,
   updateChatSessionModel,
 } from '@/services/chatApi';
-import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary } from '@shared/types';
+import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary, ChatStep } from '@shared/types';
 import { useChatHeaderExtras } from '@/contexts/ChatHeaderExtras';
 
 function truncateName(name: string, max = 20): string {
@@ -38,6 +40,57 @@ function formatTime(iso: string): string {
   } catch {
     return '';
   }
+}
+
+function upsertChatStep(steps: ChatStep[], step: ChatStep): ChatStep[] {
+  const now = Date.now();
+  const idx = steps.findIndex((s) => s.id === step.id);
+  if (idx >= 0) {
+    const prev = steps[idx];
+    const startedAt = prev.startedAt ?? step.startedAt ?? now;
+    let completedAt = prev.completedAt ?? step.completedAt;
+    if (step.status === 'completed' && completedAt == null) {
+      completedAt = now;
+    }
+    const durationMs =
+      completedAt != null && startedAt != null
+        ? completedAt - startedAt
+        : prev.durationMs;
+    const next = [...steps];
+    next[idx] = { ...prev, ...step, startedAt, completedAt, durationMs };
+    return next;
+  }
+  const startedAt = step.startedAt ?? now;
+  const completedAt =
+    step.status === 'completed' ? (step.completedAt ?? now) : step.completedAt;
+  const durationMs =
+    completedAt != null && startedAt != null ? completedAt - startedAt : undefined;
+  return [...steps, { ...step, startedAt, completedAt, durationMs }];
+}
+
+function completeInitStep(steps: ChatStep[]): ChatStep[] {
+  const now = Date.now();
+  return steps.map((s) =>
+    s.id === '__hermes_init__' && s.status === 'running'
+      ? {
+          ...s,
+          status: 'completed',
+          label: '已接收问题，开始处理',
+          completedAt: now,
+          durationMs: s.startedAt != null ? now - s.startedAt : undefined,
+        }
+      : s
+  );
+}
+
+function mergeSessionWithSteps(session: ChatSession, steps: ChatStep[]): ChatSession {
+  if (!steps.length) return session;
+  return {
+    ...session,
+    messages: session.messages.map((m, i, arr) =>
+      m.role === 'assistant' && i === arr.length - 1 ? { ...m, steps } : m
+    ),
+  };
 }
 
 type ChatPageProps = {
@@ -60,12 +113,34 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const [defaultModel, setDefaultModel] = useState('hermes-agent');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const streamStepsRef = useRef<ChatStep[]>([]);
 
   const adjustTextareaHeight = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, []);
+
+  const applySessionUpdate = useCallback((session: ChatSession) => {
+    setCurrentSession(session);
+    setSessions((prev) => {
+      const summary = {
+        id: session.id,
+        name: session.name,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        messageCount: session.messages.length,
+      };
+      const exists = prev.some((s) => s.id === summary.id);
+      if (!exists) return [summary, ...prev];
+      return prev.map((s) => (s.id === summary.id ? summary : s));
+    });
+  }, []);
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -314,7 +389,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             messages: [
               ...prev.messages,
               optimisticUser,
-              { id: assistantId, role: 'assistant', content: '', timestamp: now },
+              { id: assistantId, role: 'assistant', content: '', timestamp: now, steps: [] },
             ],
           }
         : {
@@ -322,14 +397,22 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             name: '新对话',
             messages: [
               optimisticUser,
-              { id: assistantId, role: 'assistant', content: '', timestamp: now },
+              { id: assistantId, role: 'assistant', content: '', timestamp: now, steps: [] },
             ],
             createdAt: now,
             updatedAt: now,
           }
     );
 
-    const streamRes = await streamChatMessage(sessionId, text, (event) => {
+    streamStepsRef.current = [];
+
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+
+    const streamRes = await streamChatMessage(
+      sessionId,
+      text,
+      (event) => {
       if (event.type === 'started') {
         setCurrentSession((prev) =>
           prev
@@ -342,36 +425,61 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             : prev
         );
       } else if (event.type === 'delta') {
+        streamStepsRef.current = completeInitStep(streamStepsRef.current);
         setCurrentSession((prev) =>
           prev
             ? {
                 ...prev,
                 messages: prev.messages.map((m) =>
-                  m.id === assistantId ? { ...m, content: m.content + event.delta } : m
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        content: m.content + event.delta,
+                        steps: completeInitStep(m.steps ?? []),
+                      }
+                    : m
                 ),
               }
             : prev
         );
-      } else if (event.type === 'done') {
-        setCurrentSession(event.session);
-        setSessions((prev) => {
-          const summary = {
-            id: event.session.id,
-            name: event.session.name,
-            createdAt: event.session.createdAt,
-            updatedAt: event.session.updatedAt,
-            messageCount: event.session.messages.length,
-          };
-          const exists = prev.some((s) => s.id === summary.id);
-          if (!exists) return [summary, ...prev];
-          return prev.map((s) => (s.id === summary.id ? summary : s));
-        });
+      } else if (event.type === 'step') {
+        streamStepsRef.current = completeInitStep(
+          upsertChatStep(streamStepsRef.current, event.step)
+        );
+        setCurrentSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, steps: streamStepsRef.current }
+                    : m
+                ),
+              }
+            : prev
+        );
+      } else if (event.type === 'done' || event.type === 'stopped') {
+        applySessionUpdate(mergeSessionWithSteps(event.session, streamStepsRef.current));
+        streamStepsRef.current = [];
       } else if (event.type === 'error') {
         setError(event.message);
       }
-    });
+    },
+      abortController.signal
+    );
 
     setSending(false);
+    abortRef.current = null;
+
+    if (streamRes.aborted) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const detail = await getChatSession(sessionId);
+      if (detail.success && detail.session) {
+        applySessionUpdate(mergeSessionWithSteps(detail.session, streamStepsRef.current));
+      }
+      streamStepsRef.current = [];
+      return;
+    }
 
     if (!streamRes.success) {
       setError(streamRes.error ?? '发送失败');
@@ -551,14 +659,23 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                     )}
                   >
                     {message.role === 'user' ? (
-                      <p className="whitespace-pre-wrap break-words">{message.content}</p>
-                    ) : isStreamingReply && !message.content ? (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                        <span>正在回复…</span>
-                      </div>
+                      <ChatMarkdown content={message.content} variant="user" />
                     ) : (
-                      <ChatMarkdown content={message.content} />
+                      <>
+                        {message.steps && message.steps.length > 0 && (
+                          <ChatThinkingSteps
+                            steps={message.steps}
+                            hasContent={Boolean(message.content.trim())}
+                          />
+                        )}
+                        {isStreamingReply && !message.content && !message.steps?.length ? (
+                          <p className="text-muted-foreground leading-relaxed">
+                            正在生成回复，可能需要一点时间，请稍候…
+                          </p>
+                        ) : message.content ? (
+                          <ChatMarkdown content={message.content} />
+                        ) : null}
+                      </>
                     )}
                     <p
                       className={cn(
@@ -638,13 +755,16 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                   <Button
                     type="button"
                     size="icon"
-                    className="size-9 rounded-full shadow-sm"
-                    onClick={() => void handleSend()}
-                    disabled={!input.trim() || sending || !chatReady}
-                    title="发送"
+                    className={cn(
+                      'size-9 rounded-full shadow-sm',
+                      sending && 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+                    )}
+                    onClick={() => (sending ? handleStop() : void handleSend())}
+                    disabled={sending ? false : !input.trim() || !chatReady}
+                    title={sending ? '停止生成' : '发送'}
                   >
                     {sending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Square className="h-3.5 w-3.5 fill-current" />
                     ) : (
                       <Send className="h-4 w-4" />
                     )}

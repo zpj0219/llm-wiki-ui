@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -146,15 +146,22 @@ def api_send_message(
 
 
 @router.post("/sessions/{session_id}/messages/stream")
-def api_send_message_stream(
+async def api_send_message_stream(
     session_id: str,
     body: SendMessageRequest,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     user_id = str(current_user["id"])
+    cancel_state = {"v": False}
+
+    def is_cancelled() -> bool:
+        return cancel_state["v"]
 
     try:
-        events = stream_message(user_id, session_id, body.content)
+        events = stream_message(
+            user_id, session_id, body.content, is_cancelled=is_cancelled
+        )
     except HermesError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
@@ -163,10 +170,18 @@ def api_send_message_stream(
     if events is None:
         raise HTTPException(status_code=404, detail="会话不存在")
 
-    def generate():
-        for event in events:
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-        yield "data: [DONE]\n\n"
+    async def generate():
+        try:
+            for event in events:
+                if await request.is_disconnected():
+                    cancel_state["v"] = True
+                    break
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            if not cancel_state["v"]:
+                yield "data: [DONE]\n\n"
+        finally:
+            if cancel_state["v"]:
+                events.close()
 
     return StreamingResponse(
         generate(),

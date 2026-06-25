@@ -1,6 +1,6 @@
 import { getAuthHeaders } from './authSession';
 import { API_BASE, requestJson } from './api';
-import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary } from '@shared/types';
+import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary, ChatStep } from '@shared/types';
 
 type ApiResult<T> = { success: boolean } & T;
 
@@ -141,15 +141,18 @@ export async function sendChatMessage(
 export type ChatStreamEvent =
   | { type: 'started'; userMessage: ChatMessage }
   | { type: 'delta'; delta: string }
+  | { type: 'step'; step: ChatStep }
   | { type: 'done'; session: ChatSession; assistantMessage: ChatMessage }
+  | { type: 'stopped'; session: ChatSession; assistantMessage: ChatMessage }
   | { type: 'error'; message: string };
 
 /** OpenWebUI 风格流式对话 — Hermes /v1/chat/completions SSE */
 export async function streamChatMessage(
   sessionId: string,
   content: string,
-  onEvent: (event: ChatStreamEvent) => void
-): Promise<{ success: boolean; error?: string }> {
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<{ success: boolean; error?: string; aborted?: boolean }> {
   try {
     const res = await fetch(
       `${API_BASE}/api/chat/sessions/${encodeURIComponent(sessionId)}/messages/stream`,
@@ -160,6 +163,7 @@ export async function streamChatMessage(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ content }),
+        signal,
       }
     );
 
@@ -196,6 +200,9 @@ export async function streamChatMessage(
     }
     return { success: true };
   } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return { success: true, aborted: true };
+    }
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }

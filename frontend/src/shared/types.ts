@@ -35,11 +35,29 @@ export type WikiStats = {
 
 export type ChatRole = 'user' | 'assistant';
 
+export type ChatStepStatus = 'running' | 'completed';
+
+export type ChatStep = {
+  id: string;
+  label: string;
+  status: ChatStepStatus;
+  tool?: string;
+  detail?: string;
+  /** 步骤开始时间（ms），仅前端流式过程 */
+  startedAt?: number;
+  /** 步骤完成时间（ms） */
+  completedAt?: number;
+  /** 耗时（ms），完成时写入 */
+  durationMs?: number;
+};
+
 export type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
   timestamp: string;
+  /** 仅前端流式过程展示，不持久化到 SQLite */
+  steps?: ChatStep[];
 };
 
 export type ChatModel = {
