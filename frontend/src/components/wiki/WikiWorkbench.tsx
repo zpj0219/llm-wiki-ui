@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Save, Loader2, Link2, Eye, Pencil, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Save, Loader2, Link2, Eye, Pencil, ChevronLeft, ChevronRight, FileText, File } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,6 +11,7 @@ import {
   writeWikiPage,
   getWikiBacklinks,
 } from '@/services/wikiApi';
+import { uploadOriginal } from '@/services/uploadApi';
 import type { WikiFileEntry } from '@shared/types';
 import { WikiFileTree } from './WikiFileTree';
 import { WikiMarkdownPreview } from './WikiMarkdownPreview';
@@ -57,17 +58,21 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   const [error, setError] = useState<string | null>(null);
 
   const openPage = useCallback(async (relPath: string) => {
-    if (!isWikiDirMarkdown(relPath)) return;
     setSelectedPath(relPath);
     setLoading(true);
     setError(null);
+    const isWiki = isWikiDirMarkdown(relPath);
     try {
       const res = await readWikiPage(relPath);
       const text = res.success && res.content != null ? res.content : '';
       if (!res.success) setError(res.error ?? '读取失败');
       setDraft(text);
       setSavedContent(text);
-      setBacklinks(await getWikiBacklinks(relPath));
+      if (isWiki) {
+        setBacklinks(await getWikiBacklinks(relPath));
+      } else {
+        setBacklinks([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -81,6 +86,34 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
       setError(res.error ?? '加载文件树失败');
     }
   }, []);
+
+  const handleFileDrop = useCallback(
+    async (files: FileList, targetDir: string) => {
+      const outcomes: { name: string; ok: boolean; message: string }[] = [];
+
+      for (const file of Array.from(files)) {
+        const res = await uploadOriginal(file, { targetDir });
+        outcomes.push({
+          name: file.name,
+          ok: res.success,
+          message: res.success ? (res.relPath ?? 'OK') : (res.error ?? '失败'),
+        });
+      }
+
+      await refreshTree();
+
+      const failures = outcomes.filter((o) => !o.ok);
+      if (failures.length > 0) {
+        setError(
+          `上传失败 (${failures.length}/${outcomes.length}):\n` +
+            failures.map((f) => `${f.name}: ${f.message}`).join('\n')
+        );
+      } else {
+        setError(null);
+      }
+    },
+    [refreshTree],
+  );
 
   useEffect(() => {
     void refreshTree();
@@ -201,6 +234,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                   files={files}
                   selectedPath={selectedPath}
                   onSelect={(p) => void openPage(p)}
+                  onFileDrop={(files, targetDir) => handleFileDrop(files, targetDir)}
                 />
               </div>
             </ScrollArea>
@@ -225,6 +259,10 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {selectedPath ? (
+            (() => {
+              const isWikiSelected = isWikiDirMarkdown(selectedPath);
+              const isBinaryPreview = !isWikiSelected && !loading && !draft;
+              return (
             <Tabs defaultValue="preview" className="flex-1 flex flex-col min-h-0">
               <div className="shrink-0 border-b border-border">
                 <div className="flex items-center justify-between gap-2 px-4 pt-2 pb-2 flex-wrap">
@@ -232,23 +270,29 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                     <TabsTrigger value="preview" className="text-xs">
                       <Eye className="h-3 w-3 mr-1" />预览
                     </TabsTrigger>
-                    <TabsTrigger value="edit" className="text-xs">
-                      <Pencil className="h-3 w-3 mr-1" />编辑
-                    </TabsTrigger>
-                    <TabsTrigger value="backlinks" className="text-xs">
-                      <Link2 className="h-3 w-3 mr-1" />反向链接 ({backlinks.length})
-                    </TabsTrigger>
+                    {isWikiSelected && (
+                      <TabsTrigger value="edit" className="text-xs">
+                        <Pencil className="h-3 w-3 mr-1" />编辑
+                      </TabsTrigger>
+                    )}
+                    {isWikiSelected && (
+                      <TabsTrigger value="backlinks" className="text-xs">
+                        <Link2 className="h-3 w-3 mr-1" />反向链接 ({backlinks.length})
+                      </TabsTrigger>
+                    )}
                   </TabsList>
                   <div className="flex items-center gap-2">
-                    {onOpenGraph && (
+                    {isWikiSelected && onOpenGraph && (
                       <Button variant="outline" size="sm" onClick={() => onOpenGraph(selectedPath)}>
                         局部图
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" disabled={saving || !dirty} onClick={() => void savePage()}>
-                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
-                      保存
-                    </Button>
+                    {isWikiSelected && (
+                      <Button variant="outline" size="sm" disabled={saving || !dirty} onClick={() => void savePage()}>
+                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                        保存
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 px-4 py-2 border-t border-border">
@@ -262,16 +306,28 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                   <div className="absolute inset-0 flex items-center justify-center">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
+                ) : isBinaryPreview ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center p-6">
+                    <File className="h-10 w-10 text-muted-foreground/30" strokeWidth={1.25} />
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">无法预览此文件</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">
+                        二进制或不可读格式（.docx .pdf .png 等），仅可下载查看
+                      </p>
+                    </div>
+                  </div>
                 ) : (
                   <>
-                    <TabsContent value="edit" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
-                      <textarea
-                        className="block h-full w-full resize-none border-0 bg-background px-4 py-3 font-mono text-sm focus-visible:outline-none"
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        spellCheck={false}
-                      />
-                    </TabsContent>
+                    {isWikiSelected && (
+                      <TabsContent value="edit" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
+                        <textarea
+                          className="block h-full w-full resize-none border-0 bg-background px-4 py-3 font-mono text-sm focus-visible:outline-none"
+                          value={draft}
+                          onChange={(e) => setDraft(e.target.value)}
+                          spellCheck={false}
+                        />
+                      </TabsContent>
+                    )}
                     <TabsContent value="preview" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
                       <ScrollArea className="h-full">
                         <div className="p-6">
@@ -282,33 +338,37 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                         </div>
                       </ScrollArea>
                     </TabsContent>
-                    <TabsContent value="backlinks" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
-                      <ScrollArea className="h-full">
-                        <div className="p-6">
-                          {backlinks.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">暂无其它页面链接到本页</p>
-                          ) : (
-                            <ul className="space-y-2">
-                              {backlinks.map((p) => (
-                                <li key={p}>
-                                  <button
-                                    type="button"
-                                    className="text-sm text-blue-600 hover:underline dark:text-blue-400"
-                                    onClick={() => void openPage(p)}
-                                  >
-                                    {p}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </TabsContent>
+                    {isWikiSelected && (
+                      <TabsContent value="backlinks" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
+                        <ScrollArea className="h-full">
+                          <div className="p-6">
+                            {backlinks.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">暂无其它页面链接到本页</p>
+                            ) : (
+                              <ul className="space-y-2">
+                                {backlinks.map((p) => (
+                                  <li key={p}>
+                                    <button
+                                      type="button"
+                                      className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+                                      onClick={() => void openPage(p)}
+                                    >
+                                      {p}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </ScrollArea>
+                      </TabsContent>
+                    )}
                   </>
                 )}
               </div>
             </Tabs>
+              );
+            })()
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
               <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
