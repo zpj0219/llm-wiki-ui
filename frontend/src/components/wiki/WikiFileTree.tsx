@@ -154,11 +154,10 @@ function TreeItem({
         <button
           type="button"
           className={cn(
-            'flex w-full items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-accent text-left',
+            'flex w-full items-center gap-1 px-2 py-1 text-xs hover:bg-accent text-left min-w-0',
             dragOver && 'bg-primary/10 ring-2 ring-primary/40',
             uploading && 'opacity-50 pointer-events-none',
           )}
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
           onClick={() => !uploading && setOpen(!open)}
           onDragEnter={isDropTarget ? handleDragEnter : undefined}
           onDragLeave={isDropTarget ? handleDragLeave : undefined}
@@ -212,18 +211,16 @@ function TreeItem({
     <button
       type="button"
       className={cn(
-        'flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent text-left',
-        isSelected && 'bg-primary/10 text-primary font-medium ring-1 ring-primary/20',
-        !isWikiFile && isSelected && 'bg-primary/10 text-primary font-medium ring-1 ring-primary/20',
-        !isWikiFile && !isSelected && 'text-muted-foreground',
+        'flex w-full items-center gap-1.5 px-2 py-1.5 text-xs transition-colors hover:bg-accent text-left min-w-0',
+        isSelected && 'text-foreground font-medium',
+        !isSelected && 'text-muted-foreground/60',
       )}
-      style={{ paddingLeft: `${depth * 12 + 20}px` }}
       onClick={() => onSelect(node.path)}
     >
       {isWikiFile ? (
-        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <FileText className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-foreground' : 'text-muted-foreground/50')} />
       ) : (
-        <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+        <File className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-foreground' : 'text-muted-foreground/50')} />
       )}
       <span className="truncate">{isWikiFile ? node.name.replace(/\.md$/i, '') : node.name}</span>
       {fileStatus && (

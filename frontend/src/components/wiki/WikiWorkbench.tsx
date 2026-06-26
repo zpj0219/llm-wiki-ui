@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Eye, File, FileText, Link2, Loader2, Pencil, Save } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, File, FileText, LayoutGrid, Link2, Loader2, Pencil, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -58,10 +58,6 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['wiki']));
 
   const WIKI_SUBS = ['wiki/entities', 'wiki/topics', 'wiki/sources'];
-
-  const TOP_CATEGORIES = [
-    { key: 'wiki', subs: WIKI_SUBS },
-  ];
 
   const openPage = useCallback(async (relPath: string) => {
     setSelectedPath(relPath);
@@ -192,9 +188,10 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
         >
           <div className="p-2.5 flex items-center justify-between shrink-0 border-b border-border bg-background/50">
             {!sidebarCollapsed && (
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground px-2">
-                页面
-              </span>
+              <div className="flex items-center gap-1.5 text-xs font-medium px-3">
+                <LayoutGrid className="h-3.5 w-3.5" />
+                工作台
+              </div>
             )}
             <Button
               variant="ghost"
@@ -208,64 +205,53 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
           {!sidebarCollapsed && (
             <>
               {/* 分类导航 — 无箭头，纯缩进层级 */}
-              <ScrollArea className="flex-1 min-w-0">
-                <div className="py-1">
-                  {TOP_CATEGORIES.map((top) => {
+              <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+                <div className="py-1 min-w-0">
+                  {WIKI_SUBS.map((sub) => {
+                    const subOpen = expandedNodes.has(sub);
                     return (
-                      <div key={top.key}>
-                        <div className="w-full px-3 py-2 text-sm font-bold text-primary bg-primary/10">
-                          {categoryLabel(top.key)}
-                        </div>
-                        <div>
-                            {top.subs.map((sub) => {
-                              const subOpen = expandedNodes.has(sub);
-                              return (
-                                <div key={sub}>
-                                  <button
-                                    type="button"
-                                    className={cn(
-                                      'w-full flex items-center justify-between py-1.5 text-xs font-medium rounded-none transition-colors',
-                                      subOpen
-                                        ? 'bg-accent text-foreground'
-                                        : 'text-muted-foreground hover:bg-accent/60',
-                                    )}
-                                    style={{ paddingLeft: '2rem', paddingRight: '0.5rem' }}
-                                    onClick={() => {
-                                      const next = new Set(expandedNodes);
-                                      if (subOpen) next.delete(sub);
-                                      else next.add(sub);
-                                      setExpandedNodes(next);
-                                    }}
-                                  >
-                                    <span>{categoryLabel(sub)}</span>
-                                    <span className="flex items-center gap-1.5">
-                                      <ChevronRight
-                                        className={cn(
-                                          'h-3.5 w-3.5 shrink-0 transition-transform duration-200',
-                                          subOpen && 'rotate-90',
-                                        )}
-                                      />
-                                    </span>
-                                  </button>
-                                  {subOpen && (
-                                    <div style={{ paddingLeft: '2rem' }}>
-                                      <WikiFileTree
-                                        files={files}
-                                        selectedPath={selectedPath}
-                                        onSelect={(p) => void openPage(p)}
-                                        rootPath={sub}
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                      <div key={sub}>
+                        <button
+                          type="button"
+                          className={cn(
+                            'w-full flex items-center justify-between py-1.5 text-xs font-medium rounded-none transition-colors min-w-0',
+                            subOpen
+                              ? 'bg-accent text-foreground'
+                              : 'text-muted-foreground hover:bg-accent/60',
+                          )}
+                          style={{ paddingLeft: '2rem', paddingRight: '0.5rem' }}
+                          onClick={() => {
+                            const next = new Set(expandedNodes);
+                            if (subOpen) next.delete(sub);
+                            else next.add(sub);
+                            setExpandedNodes(next);
+                          }}
+                        >
+                          <span className="truncate">{categoryLabel(sub)}</span>
+                          <span className="flex items-center gap-1.5">
+                            <ChevronRight
+                              className={cn(
+                                'h-3.5 w-3.5 shrink-0 transition-transform duration-200',
+                                subOpen && 'rotate-90',
+                              )}
+                            />
+                          </span>
+                        </button>
+                        {subOpen && (
+                          <div style={{ paddingLeft: '2rem' }} className="overflow-hidden">
+                            <WikiFileTree
+                              files={files}
+                              selectedPath={selectedPath}
+                              onSelect={(p) => void openPage(p)}
+                              rootPath={sub}
+                            />
                           </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              </ScrollArea>
+              </div>
             </>
           )}
 

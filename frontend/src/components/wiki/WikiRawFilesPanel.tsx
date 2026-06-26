@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CircleCheck, Clock, File, FileCheck, Folder, Loader2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { WikiUploadDialog } from './WikiUploadDialog';
+
 import { categoryLabel, cn, normPath } from '@/lib/utils';
 import { listWikiEntries, getOriginalsStatus } from '@/services/wikiApi';
 import { uploadOriginalWithProgress, type UploadProgress } from '@/services/uploadApi';
@@ -87,7 +87,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ name: string; progress: UploadProgress } | null>(null);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>('raw/originals');
@@ -400,7 +400,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
               <span className="text-[11px] text-muted-foreground/50">
                 支持文件拖放上传
               </span>
-              <Button variant="outline" size="sm" onClick={() => setUploadDialogOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                 <Upload className="h-3.5 w-3.5 mr-1.5" />
                 上传原件
               </Button>
@@ -504,10 +504,19 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         )}
       </div>
 
-      <WikiUploadDialog
-        open={uploadDialogOpen}
-        onOpenChange={setUploadDialogOpen}
-        onUploaded={() => void fetchData()}
+      {/* Hidden file input for button-triggered upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = e.target.files;
+          if (files?.length) {
+            void uploadFiles(files, browsePath);
+          }
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }}
       />
 
       {/* Portal tooltip — avoids clipping by overflow containers */}
