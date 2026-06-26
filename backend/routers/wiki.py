@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
-from knowledge_store import get_all_originals_status, get_page, get_stats, kb_root, list_entries, save_page
+from knowledge_store import ensure_kb_root, get_all_originals_status, get_page, get_stats, kb_root, list_entries, resolve_rel, save_page
 from wiki_index import (
     build_graph,
     get_backlinks,
@@ -85,3 +85,15 @@ def api_refresh():
 @router.get("/originals-status")
 def api_originals_status():
     return {"success": True, "statuses": get_all_originals_status()}
+
+
+@router.post("/ensure-dir")
+def api_ensure_dir(dir_path: str = Body(..., embed=True)):
+    """创建知识库目录（用于上传空文件夹）"""
+    ensure_kb_root()
+    try:
+        dest = resolve_rel(dir_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    dest.mkdir(parents=True, exist_ok=True)
+    return {"success": True, "path": dir_path}

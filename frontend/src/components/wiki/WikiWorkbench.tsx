@@ -392,7 +392,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
               <div className="space-y-1">
                 <p className="text-sm font-medium">选择 Wiki 页面</p>
                 <p className="text-xs text-muted-foreground max-w-xs">
-                  从左侧文件树选择 Markdown 页面；上传原件请点击右上角「上传原件」
+                  从左侧文件树选择 Markdown 页面；上传文件请点击右上角「上传文件」
                 </p>
               </div>
             </div>

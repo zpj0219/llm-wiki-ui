@@ -4,9 +4,10 @@ import { ArrowLeft, CircleCheck, Clock, File, FileCheck, Folder, Loader2, Upload
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-import { categoryLabel, cn, normPath } from '@/lib/utils';
-import { listWikiEntries, getOriginalsStatus } from '@/services/wikiApi';
+import { categoryLabel, cn, normPath, truncateMiddle } from '@/lib/utils';
+import { listWikiEntries, getOriginalsStatus, ensureDir } from '@/services/wikiApi';
 import { uploadOriginalWithProgress, type UploadProgress } from '@/services/uploadApi';
+import { FilePreviewDialog } from './FilePreviewDialog';
 import type { OriginalsFileStatus, WikiFileEntry } from '@shared/types';
 
 type WikiRawFilesPanelProps = {
@@ -74,6 +75,77 @@ function FileStatusIcon({ status }: { status: OriginalsFileStatus['stage'] }) {
   return <CircleCheck className="h-3.5 w-3.5 text-green-500" />;
 }
 
+type FileEntry = { file: File; relativePath?: string };
+
+type DropResult = {
+  files: FileEntry[];
+  dirPaths: string[]; // all directory paths found (including empty ones)
+};
+
+/** 递归遍历拖放的目录树，提取所有文件及其相对路径，同时记录所有目录路径 */
+async function getFilesFromDataTransfer(items: DataTransferItemList): Promise<DropResult> {
+  const files: FileEntry[] = [];
+  const dirPaths: string[] = [];
+
+  async function walk(entry: FileSystemEntry, parentPath: string) {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) => {
+        (entry as FileSystemFileEntry).file(resolve, reject);
+      });
+      const relPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+      files.push({ file, relativePath: relPath });
+    } else if (entry.isDirectory) {
+      const subPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+      dirPaths.push(subPath);
+
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+
+      // readEntries may need to be called repeatedly to get all entries
+      const readAll = (): Promise<FileSystemEntry[]> => {
+        return new Promise((resolve) => {
+          const all: FileSystemEntry[] = [];
+          const read = () => {
+            reader.readEntries((entries) => {
+              if (entries.length === 0) {
+                resolve(all);
+              } else {
+                all.push(...entries);
+                read();
+              }
+            });
+          };
+          read();
+        });
+      };
+
+      const children = await readAll();
+      for (const child of children) {
+        await walk(child, subPath);
+      }
+    }
+  }
+
+  const entries: FileSystemEntry[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item?.kind === 'file') {
+      const entry = item.webkitGetAsEntry?.();
+      if (entry) entries.push(entry);
+      else if (item.getAsFile) {
+        // Fallback for browsers without webkitGetAsEntry
+        const file = item.getAsFile();
+        if (file) files.push({ file });
+      }
+    }
+  }
+
+  for (const entry of entries) {
+    await walk(entry, '');
+  }
+
+  return { files, dirPaths };
+}
+
 const STAGE_TOOLTIPS: Record<string, string> = {
   uploaded: '待处理 — 等待全文提取',
   fulltext: '已提取全文 — 等待实体生成',
@@ -87,7 +159,9 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ name: string; progress: UploadProgress } | null>(null);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>('raw/originals');
@@ -153,22 +227,28 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const folderDragCounters = useRef<Map<string, number>>(new Map());
 
   const uploadFiles = useCallback(
-    async (fileList: FileList, targetDir: string) => {
+    async (entries: FileEntry[], baseTargetDir: string) => {
       setUploading(true);
       const outcomes: { name: string; ok: boolean; message: string }[] = [];
 
-      const files = Array.from(fileList);
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]!;
-        setUploadProgress({ name: file.name, progress: { loaded: 0, total: file.size, percent: 0 } });
+      for (const { file, relativePath } of entries) {
+        const displayName = relativePath ?? file.name;
+        setUploadProgress({ name: displayName, progress: { loaded: 0, total: file.size, percent: 0 } });
+
+        // Build target dir: if file has a relative folder path, append it to base
+        let targetDir = baseTargetDir;
+        if (relativePath && relativePath.includes('/')) {
+          const folderPath = relativePath.slice(0, relativePath.lastIndexOf('/'));
+          targetDir = normPath(`${baseTargetDir}/${folderPath}`);
+        }
 
         const res = await uploadOriginalWithProgress(
           file,
           { targetDir },
-          (progress) => setUploadProgress({ name: file.name, progress }),
+          (progress) => setUploadProgress({ name: displayName, progress }),
         );
         outcomes.push({
-          name: file.name,
+          name: displayName,
           ok: res.success,
           message: res.success ? (res.relPath ?? 'OK') : (res.error ?? '失败'),
         });
@@ -223,12 +303,27 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
       e.stopPropagation();
       dragCounter.current = 0;
       setDragOver(false);
-      const fileList = e.dataTransfer.files;
-      if (!fileList?.length) return;
-      await uploadFiles(fileList, dropTargetDir ?? browsePath);
+      const targetDir = dropTargetDir ?? browsePath;
+
+      const items = e.dataTransfer.items;
+      if (items && items.length > 0 && typeof items[0]?.webkitGetAsEntry === 'function') {
+        const { files, dirPaths } = await getFilesFromDataTransfer(items);
+        if (files.length > 0) {
+          await uploadFiles(files, targetDir);
+        }
+        // Create empty directories and refresh
+        const created = await createEmptyDirs(dirPaths, files, targetDir);
+        if (created) await fetchData();
+      } else {
+        const fileList = e.dataTransfer.files;
+        if (fileList?.length) {
+          const entries = Array.from(fileList).map((f) => ({ file: f }));
+          await uploadFiles(entries, targetDir);
+        }
+      }
       setDropTargetDir(null);
     },
-    [browsePath, dropTargetDir, uploadFiles],
+    [browsePath, dropTargetDir, uploadFiles, fetchData],
   );
 
   // Per-folder drag handlers (drop on a folder → that folder becomes target)
@@ -266,11 +361,51 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
       setDropTargetDir(null);
       setDragOver(false);
       dragCounter.current = 0;
-      const fileList = e.dataTransfer.files;
-      if (!fileList?.length) return;
-      await uploadFiles(fileList, dirPath);
+
+      const items = e.dataTransfer.items;
+      if (items && items.length > 0 && typeof items[0]?.webkitGetAsEntry === 'function') {
+        const { files, dirPaths } = await getFilesFromDataTransfer(items);
+        if (files.length > 0) {
+          await uploadFiles(files, dirPath);
+        }
+        const created = await createEmptyDirs(dirPaths, files, dirPath);
+        if (created) await fetchData();
+      } else {
+        const fileList = e.dataTransfer.files;
+        if (fileList?.length) {
+          const entries = Array.from(fileList).map((f) => ({ file: f }));
+          await uploadFiles(entries, dirPath);
+        }
+      }
     },
-    [uploadFiles],
+    [uploadFiles, fetchData],
+  );
+
+  /** 为拖放中不含文件的空目录创建对应的知识库路径，返回是否创建了目录 */
+  const createEmptyDirs = useCallback(
+    async (allDirPaths: string[], uploadedFiles: FileEntry[], baseTargetDir: string): Promise<boolean> => {
+      // Collect paths that actually have files
+      const pathsWithFiles = new Set<string>();
+      for (const { relativePath } of uploadedFiles) {
+        if (relativePath && relativePath.includes('/')) {
+          const parts = relativePath.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            pathsWithFiles.add(parts.slice(0, i).join('/'));
+          }
+        }
+      }
+
+      let created = false;
+      for (const dirPath of allDirPaths) {
+        if (!pathsWithFiles.has(dirPath)) {
+          const targetPath = normPath(`${baseTargetDir}/${dirPath}`);
+          await ensureDir(targetPath);
+          created = true;
+        }
+      }
+      return created;
+    },
+    [],
   );
 
   // Breadcrumb segments from activeSection root to current browsePath
@@ -323,7 +458,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         <div className="shrink-0 px-4 py-3 bg-primary/5 text-primary text-xs border-b space-y-1.5">
           <div className="flex items-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>上传中 — {uploadProgress?.name ?? '...'}</span>
+            <span>上传中 — {uploadProgress ? truncateMiddle(uploadProgress.name, 40) : '...'}</span>
             {uploadProgress && (
               <span className="ml-auto font-mono tabular-nums">{uploadProgress.progress.percent}%</span>
             )}
@@ -402,7 +537,11 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
               </span>
               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                 <Upload className="h-3.5 w-3.5 mr-1.5" />
-                上传原件
+                上传文件
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => folderInputRef.current?.click()}>
+                <Folder className="h-3.5 w-3.5 mr-1.5" />
+                上传文件夹
               </Button>
             </div>
           )}
@@ -480,6 +619,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                         )}
                         onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
                         onMouseLeave={hideTip}
+                        onDoubleClick={() => setPreviewPath(f.relPath)}
                       >
                         {/* File icon with status badge */}
                         <div className="relative">
@@ -490,8 +630,8 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                             </span>
                           )}
                         </div>
-                        <span className="text-[11px] leading-tight break-all line-clamp-2">
-                          {fileName}
+                        <span className="text-[11px] leading-tight truncate w-full" title={fileName}>
+                          {truncateMiddle(fileName)}
                         </span>
                       </div>
                     );
@@ -513,10 +653,38 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         onChange={(e) => {
           const files = e.target.files;
           if (files?.length) {
-            void uploadFiles(files, browsePath);
+            const entries = Array.from(files).map((f) => ({ file: f }));
+            void uploadFiles(entries, browsePath);
           }
           if (fileInputRef.current) fileInputRef.current.value = '';
         }}
+      />
+
+      {/* Hidden folder input — preserves directory structure via webkitRelativePath */}
+      <input
+        ref={folderInputRef}
+        type="file"
+        /* @ts-expect-error webkitdirectory is widely supported */
+        webkitdirectory=""
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = e.target.files;
+          if (files?.length) {
+            const entries = Array.from(files).map((f) => ({
+              file: f,
+              relativePath: (f as any).webkitRelativePath as string | undefined,
+            }));
+            void uploadFiles(entries, browsePath);
+          }
+          if (folderInputRef.current) folderInputRef.current.value = '';
+        }}
+      />
+
+      <FilePreviewDialog
+        open={previewPath !== null}
+        relPath={previewPath}
+        onOpenChange={(open) => { if (!open) setPreviewPath(null); }}
       />
 
       {/* Portal tooltip — avoids clipping by overflow containers */}

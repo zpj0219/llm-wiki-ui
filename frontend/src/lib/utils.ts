@@ -26,7 +26,7 @@ export function titleFromPath(relPath: string): string {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  'raw/originals': '原件',
+  'raw/originals': '文件',
   'raw/fulltext': '全文',
   'raw/inbox': '暂存',
   'wiki/entities': '实体',
@@ -61,4 +61,15 @@ export function isSubCategory(relPath: string): boolean {
     p === 'wiki/topics' ||
     p === 'wiki/sources'
   );
+}
+
+/** 文件名中间截断，保留头尾和后缀名 */
+export function truncateMiddle(name: string, maxLen = 24): string {
+  if (name.length <= maxLen) return name;
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 && dot > name.length - 8 ? name.slice(dot) : '';
+  const base = ext ? name.slice(0, dot) : name;
+  const headLen = Math.floor((maxLen - ext.length - 3) / 2);
+  const tailLen = maxLen - ext.length - 3 - headLen;
+  return base.slice(0, headLen) + '...' + base.slice(-tailLen) + ext;
 }

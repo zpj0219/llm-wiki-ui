@@ -115,7 +115,7 @@ export function WikiUploadDialog({ open, onOpenChange, onUploaded }: WikiUploadD
               <FolderUp className="h-4 w-4" />
             </div>
             <div>
-              <DialogTitle>上传原件</DialogTitle>
+              <DialogTitle>上传文件</DialogTitle>
               <DialogDescription className="mt-1">
                 写入知识库 raw 目录，由 Hermes 定时任务自动处理
               </DialogDescription>

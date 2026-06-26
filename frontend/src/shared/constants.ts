@@ -33,7 +33,7 @@ export type LLMWikiTab = 'workbench' | 'rawfiles' | 'graph' | 'search';
 
 export const LLM_WIKI_TABS: { id: LLMWikiTab; label: string }[] = [
   { id: 'workbench', label: '工作台' },
-  { id: 'rawfiles', label: '原始文件' },
+  { id: 'rawfiles', label: '文件管理' },
   { id: 'graph', label: '关系图' },
   { id: 'search', label: '概况' },
 ];

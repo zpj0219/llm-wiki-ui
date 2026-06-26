@@ -205,7 +205,7 @@ def save_original(
         resolve_rel(dir_rel)
         dest_dir = resolve_rel(dir_rel)
         if not dest_dir.is_dir():
-            raise ValueError("目标路径不是目录")
+            dest_dir.mkdir(parents=True, exist_ok=True)
         rel = f"{dir_rel}/{safe_name}"
 
     dest = resolve_rel(rel)

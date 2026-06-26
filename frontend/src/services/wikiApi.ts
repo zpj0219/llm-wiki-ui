@@ -107,3 +107,15 @@ export async function getOriginalsStatus(): Promise<{
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+export async function ensureDir(dirPath: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requestJson('/api/wiki/ensure-dir', {
+      method: 'POST',
+      body: JSON.stringify({ dir_path: dirPath }),
+    });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}

@@ -213,14 +213,14 @@ function TreeItem({
       className={cn(
         'flex w-full items-center gap-1.5 px-2 py-1.5 text-xs transition-colors hover:bg-accent text-left min-w-0',
         isSelected && 'text-foreground font-medium',
-        !isSelected && 'text-muted-foreground/60',
+        !isSelected && 'text-muted-foreground/70',
       )}
       onClick={() => onSelect(node.path)}
     >
       {isWikiFile ? (
-        <FileText className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-foreground' : 'text-muted-foreground/50')} />
+        <FileText className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-foreground' : 'text-muted-foreground/70')} />
       ) : (
-        <File className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-foreground' : 'text-muted-foreground/50')} />
+        <File className={cn('h-3.5 w-3.5 shrink-0', isSelected ? 'text-foreground' : 'text-muted-foreground/70')} />
       )}
       <span className="truncate">{isWikiFile ? node.name.replace(/\.md$/i, '') : node.name}</span>
       {fileStatus && (
