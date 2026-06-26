@@ -111,3 +111,73 @@ export async function uploadOriginal(
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+export type UploadProgress = {
+  loaded: number;
+  total: number;
+  percent: number;
+};
+
+/** 带进度回调的上传，使用 XMLHttpRequest 以获取 upload.progress 事件 */
+export function uploadOriginalWithProgress(
+  file: File,
+  options: { targetDir: string; toInbox?: boolean },
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<{ success: boolean; relPath?: string; message?: string; error?: string }> {
+  return new Promise((resolve) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('target_dir', options.targetDir);
+    form.append('to_inbox', options.toInbox ? 'true' : 'false');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/api/upload/originals`);
+
+    const authHeaders = getAuthHeaders();
+    for (const [key, value] of Object.entries(authHeaders)) {
+      if (key.toLowerCase() !== 'content-type') {
+        xhr.setRequestHeader(key, value as string);
+      }
+    }
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress({
+          loaded: e.loaded,
+          total: e.total,
+          percent: Math.round((e.loaded / e.total) * 100),
+        });
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      try {
+        const data = JSON.parse(xhr.responseText || '{}');
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({
+            success: true,
+            relPath: data.relPath,
+            message: data.message,
+          });
+        } else {
+          resolve({
+            success: false,
+            error: data.detail ?? data.message ?? `HTTP ${xhr.status}`,
+          });
+        }
+      } catch {
+        resolve({ success: false, error: `HTTP ${xhr.status}` });
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      resolve({ success: false, error: '网络错误，上传失败' });
+    });
+
+    xhr.addEventListener('abort', () => {
+      resolve({ success: false, error: '上传已取消' });
+    });
+
+    xhr.send(form);
+  });
+}

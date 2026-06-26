@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: true, // 监听所有网卡，局域网其他设备可访问
     port: 5173,
     proxy: {
       '/api': {

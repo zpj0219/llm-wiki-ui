@@ -14,8 +14,9 @@ import { Label } from '@/components/ui/label';
 import { OriginalsDirTree } from '@/components/wiki/OriginalsDirTree';
 import {
   listOriginalsDirs,
-  uploadOriginal,
+  uploadOriginalWithProgress,
   type OriginalsDirEntry,
+  type UploadProgress,
 } from '@/services/uploadApi';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +36,7 @@ export function WikiUploadDialog({ open, onOpenChange, onUploaded }: WikiUploadD
   const [dirsError, setDirsError] = useState<string | null>(null);
   const [toInbox, setToInbox] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; progress: UploadProgress } | null>(null);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -67,11 +69,18 @@ export function WikiUploadDialog({ open, onOpenChange, onUploaded }: WikiUploadD
       setUploading(true);
       setResult(null);
 
+      const fileArray = Array.from(files);
       const outcomes: string[] = [];
       let anyOk = false;
 
-      for (const file of Array.from(files)) {
-        const res = await uploadOriginal(file, { targetDir, toInbox });
+      for (const file of fileArray) {
+        setUploadProgress({ name: file.name, progress: { loaded: 0, total: file.size, percent: 0 } });
+
+        const res = await uploadOriginalWithProgress(
+          file,
+          { targetDir, toInbox },
+          (progress) => setUploadProgress({ name: file.name, progress }),
+        );
         if (res.success) {
           anyOk = true;
           outcomes.push(`${file.name} → ${res.relPath}`);
@@ -80,6 +89,7 @@ export function WikiUploadDialog({ open, onOpenChange, onUploaded }: WikiUploadD
         }
       }
 
+      setUploadProgress(null);
       setUploading(false);
       setResult({
         ok: anyOk,
@@ -167,6 +177,21 @@ export function WikiUploadDialog({ open, onOpenChange, onUploaded }: WikiUploadD
             className="hidden"
             onChange={(e) => void handleFiles(e.target.files)}
           />
+
+          {uploading && uploadProgress && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground truncate mr-2">{uploadProgress.name}</span>
+                <span className="font-mono tabular-nums shrink-0">{uploadProgress.progress.percent}%</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-primary/15 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-150 ease-out"
+                  style={{ width: `${uploadProgress.progress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {result && (
             <div

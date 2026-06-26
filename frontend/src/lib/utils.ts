@@ -24,3 +24,41 @@ export function titleFromPath(relPath: string): string {
   const base = relPath.split('/').pop() ?? relPath;
   return base.replace(/\.md$/i, '');
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  'raw/originals': '原件',
+  'raw/fulltext': '全文',
+  'raw/inbox': '暂存',
+  'wiki/entities': '实体',
+  'wiki/topics': '主题',
+  'wiki/sources': '来源',
+};
+
+/** 返回路径对应的中文类别标签，未匹配时返回原始名称 */
+export function categoryLabel(relPath: string): string {
+  const p = normPath(relPath);
+  if (CATEGORY_LABELS[p]) return CATEGORY_LABELS[p];
+  // 也匹配路径的最后一段
+  const last = p.split('/').pop() ?? p;
+  if (CATEGORY_LABELS[last]) return CATEGORY_LABELS[last];
+  return last;
+}
+
+/** raw/wiki 直系子目录（二级路径），用于分类导航 */
+export function isTopCategory(relPath: string): boolean {
+  const p = normPath(relPath);
+  return p === 'raw' || p === 'wiki';
+}
+
+/** raw/wiki 的直系子目录（如 raw/originals、wiki/entities） */
+export function isSubCategory(relPath: string): boolean {
+  const p = normPath(relPath);
+  return (
+    p === 'raw/originals' ||
+    p === 'raw/fulltext' ||
+    p === 'raw/inbox' ||
+    p === 'wiki/entities' ||
+    p === 'wiki/topics' ||
+    p === 'wiki/sources'
+  );
+}

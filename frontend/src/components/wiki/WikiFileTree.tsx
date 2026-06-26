@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ChevronRight, ChevronDown, Clock, FileCheck, FileText, File, Folder, FolderUp, Loader2, Sparkles } from 'lucide-react';
-import { cn, isOriginalsSubDir, isWikiDirMarkdown, normPath } from '@/lib/utils';
+import { ChevronRight, ChevronDown, CircleCheck, Clock, FileCheck, FileText, File, Folder, FolderUp, Loader2 } from 'lucide-react';
+import { categoryLabel, cn, isOriginalsSubDir, isWikiDirMarkdown, normPath } from '@/lib/utils';
 import type { OriginalsFileStatus, WikiFileEntry } from '@shared/types';
 
 type TreeNode = {
@@ -173,10 +173,7 @@ function TreeItem({
           ) : (
             <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           )}
-          <span className="truncate">{node.name}</span>
-          {isDropTarget && !dragOver && !uploading && (
-            <span className="ml-auto text-[9px] text-muted-foreground/40 shrink-0">drop</span>
-          )}
+          <span className="truncate">{categoryLabel(node.path)}</span>
         </button>
         {open &&
           node.children.map((child) => (
@@ -241,7 +238,7 @@ function TreeItem({
           ) : fileStatus.stage === 'fulltext' ? (
             <FileCheck className="h-3.5 w-3.5 text-blue-500" />
           ) : (
-            <Sparkles className="h-3.5 w-3.5 text-green-500" />
+            <CircleCheck className="h-3.5 w-3.5 text-green-500" />
           )}
         </span>
       )}
@@ -270,13 +267,30 @@ type WikiFileTreeProps = {
   onSelect: (path: string) => void;
   onFileDrop?: (files: FileList, targetDir: string) => Promise<void>;
   statusMap?: Map<string, OriginalsFileStatus>;
+  /** 只展示该路径下的子树 */
+  rootPath?: string;
 };
 
-export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop, statusMap }: WikiFileTreeProps) {
-  const tree = useMemo(() => buildWikiTree(files), [files]);
+function _findSubtree(roots: TreeNode[], targetPath: string): TreeNode[] {
+  for (const node of roots) {
+    if (node.path === targetPath) return node.children;
+    if (node.isDirectory && targetPath.startsWith(node.path + '/')) {
+      const found = _findSubtree(node.children, targetPath);
+      if (found.length > 0 || node.path === targetPath) return found;
+    }
+  }
+  return [];
+}
+
+export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop, statusMap, rootPath }: WikiFileTreeProps) {
+  const fullTree = useMemo(() => buildWikiTree(files), [files]);
+  const tree = useMemo(() => {
+    if (!rootPath) return fullTree;
+    return _findSubtree(fullTree, normPath(rootPath));
+  }, [fullTree, rootPath]);
 
   if (tree.length === 0) {
-    return <p className="text-xs text-muted-foreground px-2 py-4">暂无 Wiki 页面</p>;
+    return <p className="text-xs text-muted-foreground px-2 py-4">暂无内容</p>;
   }
 
   return (

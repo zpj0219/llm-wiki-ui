@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Save, Loader2, Link2, Eye, Pencil, ChevronLeft, ChevronRight, FileText, File } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, File, FileText, Link2, Loader2, Pencil, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { cn, isWikiDirMarkdown } from '@/lib/utils';
+import { categoryLabel, cn, isWikiDirMarkdown } from '@/lib/utils';
 import {
   listWikiEntries,
   readWikiPage,
   writeWikiPage,
   getWikiBacklinks,
-  getOriginalsStatus,
 } from '@/services/wikiApi';
-import { uploadOriginal } from '@/services/uploadApi';
-import type { OriginalsFileStatus, WikiFileEntry } from '@shared/types';
+import type { WikiFileEntry } from '@shared/types';
 import { WikiFileTree } from './WikiFileTree';
 import { WikiMarkdownPreview } from './WikiMarkdownPreview';
 import { WikiPathBreadcrumb } from './WikiPathBreadcrumb';
@@ -57,7 +55,13 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
     startWidth: WIKI_SIDEBAR_DEFAULT_WIDTH,
   });
   const [error, setError] = useState<string | null>(null);
-  const [statusMap, setStatusMap] = useState<Map<string, OriginalsFileStatus>>(new Map());
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['wiki']));
+
+  const WIKI_SUBS = ['wiki/entities', 'wiki/topics', 'wiki/sources'];
+
+  const TOP_CATEGORIES = [
+    { key: 'wiki', subs: WIKI_SUBS },
+  ];
 
   const openPage = useCallback(async (relPath: string) => {
     setSelectedPath(relPath);
@@ -81,47 +85,13 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   }, []);
 
   const refreshTree = useCallback(async () => {
-    const [entriesRes, statusRes] = await Promise.all([
-      listWikiEntries(),
-      getOriginalsStatus(),
-    ]);
+    const entriesRes = await listWikiEntries();
     if (entriesRes.success) {
       setFiles(entriesRes.files);
     } else {
       setError(entriesRes.error ?? '加载文件树失败');
     }
-    if (statusRes.success && statusRes.statuses) {
-      setStatusMap(new Map(Object.entries(statusRes.statuses)));
-    }
   }, []);
-
-  const handleFileDrop = useCallback(
-    async (files: FileList, targetDir: string) => {
-      const outcomes: { name: string; ok: boolean; message: string }[] = [];
-
-      for (const file of Array.from(files)) {
-        const res = await uploadOriginal(file, { targetDir });
-        outcomes.push({
-          name: file.name,
-          ok: res.success,
-          message: res.success ? (res.relPath ?? 'OK') : (res.error ?? '失败'),
-        });
-      }
-
-      await refreshTree();
-
-      const failures = outcomes.filter((o) => !o.ok);
-      if (failures.length > 0) {
-        setError(
-          `上传失败 (${failures.length}/${outcomes.length}):\n` +
-            failures.map((f) => `${f.name}: ${f.message}`).join('\n')
-        );
-      } else {
-        setError(null);
-      }
-    },
-    [refreshTree],
-  );
 
   useEffect(() => {
     void refreshTree();
@@ -236,17 +206,67 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
             </Button>
           </div>
           {!sidebarCollapsed && (
-            <ScrollArea className="flex-1 min-w-0">
-              <div className="p-2 pr-4">
-                <WikiFileTree
-                  files={files}
-                  selectedPath={selectedPath}
-                  onSelect={(p) => void openPage(p)}
-                  onFileDrop={(files, targetDir) => handleFileDrop(files, targetDir)}
-                  statusMap={statusMap}
-                />
-              </div>
-            </ScrollArea>
+            <>
+              {/* 分类导航 — 无箭头，纯缩进层级 */}
+              <ScrollArea className="flex-1 min-w-0">
+                <div className="py-1">
+                  {TOP_CATEGORIES.map((top) => {
+                    return (
+                      <div key={top.key}>
+                        <div className="w-full px-3 py-2 text-sm font-bold text-primary bg-primary/10">
+                          {categoryLabel(top.key)}
+                        </div>
+                        <div>
+                            {top.subs.map((sub) => {
+                              const subOpen = expandedNodes.has(sub);
+                              return (
+                                <div key={sub}>
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      'w-full flex items-center justify-between py-1.5 text-xs font-medium rounded-none transition-colors',
+                                      subOpen
+                                        ? 'bg-accent text-foreground'
+                                        : 'text-muted-foreground hover:bg-accent/60',
+                                    )}
+                                    style={{ paddingLeft: '2rem', paddingRight: '0.5rem' }}
+                                    onClick={() => {
+                                      const next = new Set(expandedNodes);
+                                      if (subOpen) next.delete(sub);
+                                      else next.add(sub);
+                                      setExpandedNodes(next);
+                                    }}
+                                  >
+                                    <span>{categoryLabel(sub)}</span>
+                                    <span className="flex items-center gap-1.5">
+                                      <ChevronRight
+                                        className={cn(
+                                          'h-3.5 w-3.5 shrink-0 transition-transform duration-200',
+                                          subOpen && 'rotate-90',
+                                        )}
+                                      />
+                                    </span>
+                                  </button>
+                                  {subOpen && (
+                                    <div style={{ paddingLeft: '2rem' }}>
+                                      <WikiFileTree
+                                        files={files}
+                                        selectedPath={selectedPath}
+                                        onSelect={(p) => void openPage(p)}
+                                        rootPath={sub}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </>
           )}
 
           {!sidebarCollapsed && (

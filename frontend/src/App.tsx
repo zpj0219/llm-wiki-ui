@@ -8,7 +8,6 @@ import { SettingsPage } from '@/pages/Settings';
 import { PAGES, type PageId, type LLMWikiTab } from '@shared/constants';
 import { AUTH_EXPIRED_EVENT, isLoggedInLocally } from '@/services/authSession';
 import { refreshWikiIndex } from '@/services/wikiApi';
-import { WikiUploadDialog } from '@/components/wiki/WikiUploadDialog';
 import { ChatHeaderExtrasProvider } from '@/contexts/ChatHeaderExtras';
 
 export default function App() {
@@ -20,7 +19,6 @@ export default function App() {
   const [graphFocusPath, setGraphFocusPath] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [chatNewSessionTrigger, setChatNewSessionTrigger] = useState(0);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
   const handleLoginSuccess = useCallback(() => {
     setIsLoggedIn(true);
@@ -35,15 +33,6 @@ export default function App() {
   }, []);
 
   const handleRefresh = useCallback(async () => {
-    await refreshWikiIndex().catch(() => undefined);
-    setRefreshKey((k) => k + 1);
-  }, []);
-
-  const handleUploadFile = useCallback(() => {
-    setUploadDialogOpen(true);
-  }, []);
-
-  const handleUploaded = useCallback(async () => {
     await refreshWikiIndex().catch(() => undefined);
     setRefreshKey((k) => k + 1);
   }, []);
@@ -107,7 +96,6 @@ export default function App() {
           onLlmWikiTabChange={setLlmWikiTab}
           onRefresh={() => void handleRefresh()}
           onNewChat={() => setChatNewSessionTrigger((k) => k + 1)}
-          onUploadFile={handleUploadFile}
         />
 
         <main className="flex-1 min-h-0 overflow-hidden">
@@ -128,11 +116,6 @@ export default function App() {
         </main>
       </div>
 
-      <WikiUploadDialog
-        open={uploadDialogOpen}
-        onOpenChange={setUploadDialogOpen}
-        onUploaded={() => void handleUploaded()}
-      />
     </div>
     </ChatHeaderExtrasProvider>
   );
