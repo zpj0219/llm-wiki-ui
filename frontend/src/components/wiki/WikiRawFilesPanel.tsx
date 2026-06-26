@@ -721,14 +721,17 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                     const isDirDropTarget = isOriginals && dropTargetDir === dir.relPath;
                     const dirName = dir.relPath.split('/').pop() ?? '';
                     return (
-                      <div key={dir.relPath} className="flex items-center gap-1">
+                      <div
+                        key={dir.relPath}
+                        className={cn(
+                          'flex items-center gap-1 rounded-md pr-1 transition-colors',
+                          'hover:bg-accent/70',
+                          isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
+                        )}
+                      >
                         <button
                           type="button"
-                          className={cn(
-                            'flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors flex-1 min-w-0 text-left',
-                            'hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                            isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
-                          )}
+                          className="flex items-center gap-2 pl-3 py-1.5 rounded-md flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                           onDoubleClick={() => handleFileDoubleClick(dir)}
                           onDragEnter={isOriginals ? (e) => handleFolderDragEnter(e, dir.relPath) : undefined}
                           onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
@@ -739,18 +742,20 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                           <Folder className="h-10 w-10 shrink-0 text-amber-500/80" strokeWidth={1.25} />
                           <span className="text-xs truncate min-w-0">{dirName}</span>
                         </button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          title={`删除文件夹 ${dirName}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget({ relPath: dir.relPath, name: dirName, isDirectory: true });
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isOriginals && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            title={`删除文件夹 ${dirName}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget({ relPath: dir.relPath, name: dirName, isDirectory: true });
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     );
                   })}
@@ -762,13 +767,10 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                     return (
                       <div
                         key={f.relPath}
-                        className="flex items-center gap-1"
+                        className="flex items-center gap-1 rounded-md pr-1 transition-colors hover:bg-accent/70"
                       >
                         <div
-                          className={cn(
-                            'flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors flex-1 min-w-0',
-                            'hover:bg-accent/70',
-                          )}
+                          className="flex items-center gap-2 pl-3 py-1.5 rounded-md flex-1 min-w-0"
                           onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
                           onMouseLeave={hideTip}
                           onDoubleClick={() => setPreviewPath(f.relPath)}
@@ -785,30 +787,34 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                             {fileName}
                           </span>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"
-                          title={`下载 ${fileName}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleDownload(f.relPath);
-                          }}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          title={`删除文件 ${fileName}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget({ relPath: f.relPath, name: fileName, isDirectory: false });
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isOriginals && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"
+                              title={`下载 ${fileName}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDownload(f.relPath);
+                              }}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              title={`删除文件 ${fileName}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget({ relPath: f.relPath, name: fileName, isDirectory: false });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     );
                   })}
