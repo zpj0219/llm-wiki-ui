@@ -458,7 +458,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         <div className="shrink-0 px-4 py-3 bg-primary/5 text-primary text-xs border-b space-y-1.5">
           <div className="flex items-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>上传中 — {uploadProgress ? truncateMiddle(uploadProgress.name, 40) : '...'}</span>
+            <span>上传中 — {uploadProgress ? truncateMiddle(uploadProgress.name) : '...'}</span>
             {uploadProgress && (
               <span className="ml-auto font-mono tabular-nums">{uploadProgress.progress.percent}%</span>
             )}
@@ -600,7 +600,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                       >
                         <Folder className="h-10 w-10 text-amber-500/80" strokeWidth={1.25} />
                         <span className="text-[11px] leading-tight break-all line-clamp-2">
-                          {dir.relPath.split('/').pop()}
+                          {truncateMiddle(dir.relPath.split('/').pop() ?? '')}
                         </span>
                       </button>
                     );
@@ -630,7 +630,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                             </span>
                           )}
                         </div>
-                        <span className="text-[11px] leading-tight truncate w-full" title={fileName}>
+                        <span className="text-[11px] leading-tight line-clamp-2 break-all w-full" title={fileName}>
                           {truncateMiddle(fileName)}
                         </span>
                       </div>

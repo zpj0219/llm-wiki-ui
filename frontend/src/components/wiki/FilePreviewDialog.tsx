@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { File, Loader2 } from 'lucide-react';
 import {
   Dialog,
-  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { readWikiPage } from '@/services/wikiApi';
+import { WikiMarkdownPreview } from './WikiMarkdownPreview';
 
 type FilePreviewDialogProps = {
   open: boolean;
@@ -27,7 +27,7 @@ const PREVIEWABLE_EXTS = new Set([
 function canPreview(relPath: string): boolean {
   const name = relPath.split('/').pop() ?? '';
   const dot = name.lastIndexOf('.');
-  if (dot === -1) return true; // 无扩展名，尝试读取
+  if (dot === -1) return true;
   return PREVIEWABLE_EXTS.has(name.slice(dot).toLowerCase());
 }
 
@@ -65,37 +65,38 @@ export function FilePreviewDialog({ open, relPath, onOpenChange }: FilePreviewDi
   }, [open, relPath]);
 
   const fileName = relPath?.split('/').pop() ?? '';
+  const isMarkdown = fileName.endsWith('.md');
   const isBinary = !canPreview(relPath ?? '') || (!loading && !error && content == null);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onClose={() => onOpenChange(false)} className="max-w-2xl max-h-[85vh]">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange} className="!max-w-3xl">
+      <DialogContent onClose={() => onOpenChange(false)} className="h-[85vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <File className="h-4 w-4 text-muted-foreground" />
             <span className="truncate">{fileName}</span>
           </DialogTitle>
         </DialogHeader>
 
-        <DialogBody className="min-h-0 flex flex-col">
-          {relPath && (
-            <p className="text-[11px] text-muted-foreground font-mono truncate shrink-0">
-              {relPath}
-            </p>
-          )}
+        {relPath && (
+          <p className="text-[11px] text-muted-foreground font-mono truncate shrink-0 px-6">
+            {relPath}
+          </p>
+        )}
 
+        <div className="flex-1 min-h-0 px-6 pb-6">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
+            <div className="flex items-center justify-center h-full">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
               <File className="h-10 w-10 text-muted-foreground/30" strokeWidth={1.25} />
               <p className="text-sm text-muted-foreground">读取文件失败</p>
               <p className="text-xs text-muted-foreground/60">{error}</p>
             </div>
           ) : isBinary ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
               <File className="h-10 w-10 text-muted-foreground/30" strokeWidth={1.25} />
               <div>
                 <p className="text-sm font-medium text-muted-foreground">不支持预览此格式</p>
@@ -105,13 +106,19 @@ export function FilePreviewDialog({ open, relPath, onOpenChange }: FilePreviewDi
               </div>
             </div>
           ) : (
-            <ScrollArea className="flex-1 min-h-0">
-              <pre className="text-xs font-mono whitespace-pre-wrap break-all p-4 bg-muted/30 rounded-md">
-                {content}
-              </pre>
+            <ScrollArea className="h-full rounded-md border">
+              {isMarkdown ? (
+                <div className="p-4">
+                  <WikiMarkdownPreview content={content!} onOpenPage={() => {}} />
+                </div>
+              ) : (
+                <pre className="text-xs font-mono whitespace-pre-wrap break-all p-4">
+                  {content}
+                </pre>
+              )}
             </ScrollArea>
           )}
-        </DialogBody>
+        </div>
       </DialogContent>
     </Dialog>
   );

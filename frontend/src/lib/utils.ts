@@ -63,13 +63,8 @@ export function isSubCategory(relPath: string): boolean {
   );
 }
 
-/** 文件名中间截断，保留头尾和后缀名 */
-export function truncateMiddle(name: string, maxLen = 24): string {
-  if (name.length <= maxLen) return name;
-  const dot = name.lastIndexOf('.');
-  const ext = dot > 0 && dot > name.length - 8 ? name.slice(dot) : '';
-  const base = ext ? name.slice(0, dot) : name;
-  const headLen = Math.floor((maxLen - ext.length - 3) / 2);
-  const tailLen = maxLen - ext.length - 3 - headLen;
-  return base.slice(0, headLen) + '...' + base.slice(-tailLen) + ext;
+/** 文件名中间截断：超过阈值时保留头尾各7位，中间用省略号 */
+export function truncateMiddle(name: string, threshold = 16): string {
+  if (name.length <= threshold) return name;
+  return name.slice(0, 7) + '...' + name.slice(-7);
 }

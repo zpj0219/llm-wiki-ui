@@ -6,9 +6,10 @@ type DialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
+  className?: string;
 };
 
-export function Dialog({ open, onOpenChange, children }: DialogProps) {
+export function Dialog({ open, onOpenChange, children, className }: DialogProps) {
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -32,7 +33,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
         aria-label="关闭"
         onClick={() => onOpenChange(false)}
       />
-      <div className="relative z-10 w-full max-w-lg">{children}</div>
+      <div className={cn('relative z-10 w-full max-w-lg', className)}>{children}</div>
     </div>
   );
 }
