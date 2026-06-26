@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
+
 from fastapi import APIRouter, Body, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from knowledge_store import ensure_kb_root, get_all_originals_status, get_page, get_stats, kb_root, list_entries, resolve_rel, save_page
+from knowledge_store import delete_entry, ensure_kb_root, get_all_originals_status, get_page, get_stats, kb_root, list_entries, resolve_rel, save_page
 from wiki_index import (
     build_graph,
     get_backlinks,
@@ -97,3 +101,37 @@ def api_ensure_dir(dir_path: str = Body(..., embed=True)):
         raise HTTPException(status_code=400, detail=str(e)) from e
     dest.mkdir(parents=True, exist_ok=True)
     return {"success": True, "path": dir_path}
+
+
+@router.delete("/pages/{path:path}")
+def api_delete_entry(path: str):
+    """删除文件或目录"""
+    try:
+        delete_entry(path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, "message": f"已删除: {path}"}
+
+
+@router.get("/download/{path:path}")
+def api_download_file(path: str):
+    """下载文件（以附件形式返回原始文件）"""
+    try:
+        file_path = resolve_rel(path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    mime_type, _ = mimetypes.guess_type(str(file_path))
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+
+    filename = Path(path).name
+    return FileResponse(
+        path=str(file_path),
+        media_type=mime_type,
+        filename=filename,
+        content_disposition_type="attachment",
+    )

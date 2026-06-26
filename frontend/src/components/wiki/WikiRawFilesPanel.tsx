@@ -1,13 +1,23 @@
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CircleCheck, Clock, File, FileCheck, Folder, Loader2, Upload } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Clock, Download, File, FileCheck, Folder, Loader2, ListChecks, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-import { categoryLabel, cn, normPath, truncateMiddle } from '@/lib/utils';
-import { listWikiEntries, getOriginalsStatus, ensureDir } from '@/services/wikiApi';
-import { uploadOriginalWithProgress, type UploadProgress } from '@/services/uploadApi';
+import { categoryLabel, cn, normPath } from '@/lib/utils';
+import { listWikiEntries, getOriginalsStatus, ensureDir, deleteWikiEntry, downloadWikiFile } from '@/services/wikiApi';
+import { uploadOriginalWithProgress } from '@/services/uploadApi';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { FilePreviewDialog } from './FilePreviewDialog';
+import { UploadListDialog, type UploadTask } from './UploadListDialog';
 import type { OriginalsFileStatus, WikiFileEntry } from '@shared/types';
 
 type WikiRawFilesPanelProps = {
@@ -15,6 +25,13 @@ type WikiRawFilesPanelProps = {
 };
 
 const RAW_SUBS = ['raw/originals', 'raw/fulltext', 'raw/inbox'];
+
+/** 并发上传上限 */
+const MAX_CONCURRENT = 3;
+
+/** 稳定的任务 ID 生成器(应用运行时,非 workflow 脚本) */
+let taskSeq = 0;
+const nextTaskId = () => `upload-${++taskSeq}`;
 
 /** 获取路径的直接子节点（文件和目录） */
 function getDirectChildren(
@@ -157,8 +174,8 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const [statusMap, setStatusMap] = useState<Map<string, OriginalsFileStatus>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ name: string; progress: UploadProgress } | null>(null);
+  const [tasks, setTasks] = useState<UploadTask[]>([]);
+  const [listOpen, setListOpen] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -170,6 +187,14 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   // Tooltip state (portal-based to avoid clipping)
   const [tipPath, setTipPath] = useState<string | null>(null);
   const [tipRect, setTipRect] = useState<DOMRect | null>(null);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<{
+    relPath: string;
+    name: string;
+    isDirectory: boolean;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -226,50 +251,152 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const dragCounter = useRef(0);
   const folderDragCounters = useRef<Map<string, number>>(new Map());
 
-  const uploadFiles = useCallback(
-    async (entries: FileEntry[], baseTargetDir: string) => {
-      setUploading(true);
-      const outcomes: { name: string; ok: boolean; message: string }[] = [];
+  const updateTask = useCallback((id: string, patch: Partial<UploadTask>) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }, []);
 
-      for (const { file, relativePath } of entries) {
-        const displayName = relativePath ?? file.name;
-        setUploadProgress({ name: displayName, progress: { loaded: 0, total: file.size, percent: 0 } });
+  // 持有最新 tasks 的引用,供调度器读取而无需进入依赖
+  const tasksRef = useRef<UploadTask[]>([]);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
 
-        // Build target dir: if file has a relative folder path, append it to base
-        let targetDir = baseTargetDir;
-        if (relativePath && relativePath.includes('/')) {
-          const folderPath = relativePath.slice(0, relativePath.lastIndexOf('/'));
-          targetDir = normPath(`${baseTargetDir}/${folderPath}`);
-        }
+  /** 启动单个任务:置 uploading → 上传 → 置 success/failed → pump 推进 */
+  const startTask = useCallback(
+    async (task: UploadTask) => {
+      updateTask(task.id, {
+        status: 'uploading',
+        progress: { loaded: 0, total: task.file.size, percent: 0 },
+      });
 
-        const res = await uploadOriginalWithProgress(
-          file,
-          { targetDir },
-          (progress) => setUploadProgress({ name: displayName, progress }),
-        );
-        outcomes.push({
-          name: displayName,
-          ok: res.success,
-          message: res.success ? (res.relPath ?? 'OK') : (res.error ?? '失败'),
-        });
-      }
+      const res = await uploadOriginalWithProgress(
+        task.file,
+        { targetDir: task.targetDir },
+        (progress) => updateTask(task.id, { progress }),
+      );
 
-      setUploadProgress(null);
-      await fetchData();
-      setUploading(false);
-
-      const failures = outcomes.filter((o) => !o.ok);
-      if (failures.length > 0) {
-        setError(
-          `上传失败 (${failures.length}/${outcomes.length}):\n` +
-            failures.map((f) => `${f.name}: ${f.message}`).join('\n'),
-        );
+      if (res.success) {
+        updateTask(task.id, { status: 'success', relPath: res.relPath, error: undefined });
       } else {
-        setError(null);
+        updateTask(task.id, { status: 'failed', error: res.error ?? '上传失败' });
       }
+      // 任务结束后由 useEffect 监听 tasks 变化统一推进 pump 与完成检测
     },
-    [fetchData],
+    [updateTask],
   );
+
+  /** 从队列中取排队任务填充空闲并发槽 */
+  const pumpQueue = useCallback(() => {
+    const snapshot = tasksRef.current;
+    const running = snapshot.filter((t) => t.status === 'uploading').length;
+    const slots = MAX_CONCURRENT - running;
+    if (slots <= 0) return;
+
+    const toStart = snapshot.filter((t) => t.status === 'queued').slice(0, slots);
+    for (const task of toStart) {
+      void startTask(task);
+    }
+  }, [startTask]);
+
+  // 任务列表变化时驱动调度:pump 空闲槽 + 全部完成时刷新
+  const finishingRef = useRef(false);
+  useEffect(() => {
+    pumpQueue();
+    const snapshot = tasksRef.current;
+    const active = snapshot.some((t) => t.status === 'queued' || t.status === 'uploading');
+    if (!active && !finishingRef.current && snapshot.length > 0) {
+      finishingRef.current = true;
+      void (async () => {
+        await fetchData();
+        const failed = tasksRef.current.filter((t) => t.status === 'failed');
+        if (failed.length > 0) {
+          setError(`上传完成,${failed.length} 个文件失败 — 详见上传列表`);
+        } else {
+          setError(null);
+        }
+        finishingRef.current = false;
+      })();
+    }
+  }, [tasks, pumpQueue, fetchData]);
+
+  /** 入队上传:把文件条目转为任务并入队(调度由 useEffect 驱动) */
+  const enqueueUploads = useCallback((entries: FileEntry[], baseTargetDir: string) => {
+    const newTasks: UploadTask[] = entries.map(({ file, relativePath }) => {
+      const displayName = relativePath ?? file.name;
+      // 文件夹/拖放:含子目录时拼到 base 上,与原逻辑一致
+      let targetDir = baseTargetDir;
+      if (relativePath && relativePath.includes('/')) {
+        const folderPath = relativePath.slice(0, relativePath.lastIndexOf('/'));
+        targetDir = normPath(`${baseTargetDir}/${folderPath}`);
+      }
+      return {
+        id: nextTaskId(),
+        file,
+        relativePath,
+        targetDir,
+        displayName,
+        status: 'queued' as const,
+        progress: { loaded: 0, total: file.size, percent: 0 },
+      };
+    });
+
+    setError(null);
+    setTasks((prev) => [...prev, ...newTasks]);
+  }, []);
+
+  /** 重试单个失败任务 */
+  const retryTask = useCallback((id: string) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, status: 'queued', progress: { loaded: 0, total: t.file.size, percent: 0 }, error: undefined }
+          : t,
+      ),
+    );
+  }, []);
+
+  /** 重试所有失败任务 */
+  const retryAllFailed = useCallback(() => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.status === 'failed'
+          ? { ...t, status: 'queued', progress: { loaded: 0, total: t.file.size, percent: 0 }, error: undefined }
+          : t,
+      ),
+    );
+  }, []);
+
+  /** 清空已完成的任务(成功 + 失败) */
+  const clearFinished = useCallback(() => {
+    setTasks((prev) => prev.filter((t) => t.status !== 'success' && t.status !== 'failed'));
+  }, []);
+
+  /** 删除条目（需确认后调用） */
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const res = await deleteWikiEntry(deleteTarget.relPath);
+    setDeleting(false);
+    setDeleteTarget(null);
+    if (res.success) {
+      await fetchData();
+      setError(null);
+    } else {
+      setError(res.error ?? '删除失败');
+    }
+  }, [deleteTarget, fetchData]);
+
+  /** 下载文件 */
+  const handleDownload = useCallback(async (relPath: string) => {
+    const res = await downloadWikiFile(relPath);
+    if (!res.success) {
+      setError(res.error ?? '下载失败');
+    }
+  }, []);
+
+  // 派生:进行中数量,用于按钮角标与 banner
+  const uploadingCount = tasks.filter((t) => t.status === 'uploading').length;
+  const pendingCount = tasks.filter((t) => t.status === 'uploading' || t.status === 'queued').length;
 
   // Global area drag handlers (drop on empty space → browsePath)
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -309,7 +436,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
       if (items && items.length > 0 && typeof items[0]?.webkitGetAsEntry === 'function') {
         const { files, dirPaths } = await getFilesFromDataTransfer(items);
         if (files.length > 0) {
-          await uploadFiles(files, targetDir);
+          enqueueUploads(files, targetDir);
         }
         // Create empty directories and refresh
         const created = await createEmptyDirs(dirPaths, files, targetDir);
@@ -318,12 +445,12 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         const fileList = e.dataTransfer.files;
         if (fileList?.length) {
           const entries = Array.from(fileList).map((f) => ({ file: f }));
-          await uploadFiles(entries, targetDir);
+          enqueueUploads(entries, targetDir);
         }
       }
       setDropTargetDir(null);
     },
-    [browsePath, dropTargetDir, uploadFiles, fetchData],
+    [browsePath, dropTargetDir, enqueueUploads, fetchData],
   );
 
   // Per-folder drag handlers (drop on a folder → that folder becomes target)
@@ -366,7 +493,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
       if (items && items.length > 0 && typeof items[0]?.webkitGetAsEntry === 'function') {
         const { files, dirPaths } = await getFilesFromDataTransfer(items);
         if (files.length > 0) {
-          await uploadFiles(files, dirPath);
+          enqueueUploads(files, dirPath);
         }
         const created = await createEmptyDirs(dirPaths, files, dirPath);
         if (created) await fetchData();
@@ -374,11 +501,11 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         const fileList = e.dataTransfer.files;
         if (fileList?.length) {
           const entries = Array.from(fileList).map((f) => ({ file: f }));
-          await uploadFiles(entries, dirPath);
+          enqueueUploads(entries, dirPath);
         }
       }
     },
-    [uploadFiles, fetchData],
+    [enqueueUploads, fetchData],
   );
 
   /** 为拖放中不含文件的空目录创建对应的知识库路径，返回是否创建了目录 */
@@ -454,24 +581,20 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
           {error}
         </div>
       )}
-      {uploading && (
-        <div className="shrink-0 px-4 py-3 bg-primary/5 text-primary text-xs border-b space-y-1.5">
-          <div className="flex items-center gap-2">
+      {pendingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setListOpen(true)}
+          className="shrink-0 w-full px-4 py-2 bg-primary/5 text-primary text-xs border-b hover:bg-primary/10 transition-colors text-left"
+        >
+          <span className="flex items-center gap-2">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>上传中 — {uploadProgress ? truncateMiddle(uploadProgress.name) : '...'}</span>
-            {uploadProgress && (
-              <span className="ml-auto font-mono tabular-nums">{uploadProgress.progress.percent}%</span>
-            )}
-          </div>
-          {uploadProgress && (
-            <div className="h-1.5 w-full rounded-full bg-primary/15 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-150 ease-out"
-                style={{ width: `${uploadProgress.progress.percent}%` }}
-              />
-            </div>
-          )}
-        </div>
+            <span>
+              上传中 — {uploadingCount} 个进行中{pendingCount > uploadingCount ? `,${pendingCount - uploadingCount} 个排队` : ''}
+            </span>
+            <span className="ml-auto text-primary/70">查看列表 →</span>
+          </span>
+        </button>
       )}
 
       {/* Section tabs */}
@@ -543,6 +666,20 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                 <Folder className="h-3.5 w-3.5 mr-1.5" />
                 上传文件夹
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="relative"
+                onClick={() => setListOpen(true)}
+              >
+                <ListChecks className="h-3.5 w-3.5 mr-1.5" />
+                上传列表
+                {pendingCount > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                    {pendingCount}
+                  </span>
+                )}
+              </Button>
             </div>
           )}
         </div>
@@ -578,31 +715,43 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3">
+                <div className="flex flex-col gap-px">
                   {/* Directories first */}
                   {dirs.map((dir) => {
                     const isDirDropTarget = isOriginals && dropTargetDir === dir.relPath;
+                    const dirName = dir.relPath.split('/').pop() ?? '';
                     return (
-                      <button
-                        key={dir.relPath}
-                        type="button"
-                        className={cn(
-                          'flex flex-col items-center gap-1.5 p-3 rounded-lg transition-colors text-center',
-                          'hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                          isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
-                        )}
-                        onDoubleClick={() => handleFileDoubleClick(dir)}
-                        onDragEnter={isOriginals ? (e) => handleFolderDragEnter(e, dir.relPath) : undefined}
-                        onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
-                        onDragOver={isOriginals ? handleDragOver : undefined}
-                        onDrop={isOriginals ? (e) => handleFolderDrop(e, dir.relPath) : undefined}
-                        title={`双击打开 ${dir.relPath.split('/').pop()}`}
-                      >
-                        <Folder className="h-10 w-10 text-amber-500/80" strokeWidth={1.25} />
-                        <span className="text-[11px] leading-tight break-all line-clamp-2">
-                          {truncateMiddle(dir.relPath.split('/').pop() ?? '')}
-                        </span>
-                      </button>
+                      <div key={dir.relPath} className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className={cn(
+                            'flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors flex-1 min-w-0 text-left',
+                            'hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                            isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
+                          )}
+                          onDoubleClick={() => handleFileDoubleClick(dir)}
+                          onDragEnter={isOriginals ? (e) => handleFolderDragEnter(e, dir.relPath) : undefined}
+                          onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
+                          onDragOver={isOriginals ? handleDragOver : undefined}
+                          onDrop={isOriginals ? (e) => handleFolderDrop(e, dir.relPath) : undefined}
+                          title={`双击打开 ${dirName}`}
+                        >
+                          <Folder className="h-10 w-10 shrink-0 text-amber-500/80" strokeWidth={1.25} />
+                          <span className="text-xs truncate min-w-0">{dirName}</span>
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title={`删除文件夹 ${dirName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget({ relPath: dir.relPath, name: dirName, isDirectory: true });
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     );
                   })}
 
@@ -613,26 +762,53 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                     return (
                       <div
                         key={f.relPath}
-                        className={cn(
-                          'flex flex-col items-center gap-1.5 p-3 rounded-lg transition-colors text-center',
-                          'hover:bg-accent/70',
-                        )}
-                        onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
-                        onMouseLeave={hideTip}
-                        onDoubleClick={() => setPreviewPath(f.relPath)}
+                        className="flex items-center gap-1"
                       >
-                        {/* File icon with status badge */}
-                        <div className="relative">
-                          <File className="h-10 w-10 text-muted-foreground/60" strokeWidth={1.25} />
-                          {status && (
-                            <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-px">
-                              <FileStatusIcon status={status.stage} />
-                            </span>
+                        <div
+                          className={cn(
+                            'flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors flex-1 min-w-0',
+                            'hover:bg-accent/70',
                           )}
+                          onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
+                          onMouseLeave={hideTip}
+                          onDoubleClick={() => setPreviewPath(f.relPath)}
+                        >
+                          <div className="relative shrink-0">
+                            <File className="h-10 w-10 text-muted-foreground/60" strokeWidth={1.25} />
+                            {status && (
+                              <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-px">
+                                <FileStatusIcon status={status.stage} />
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs truncate min-w-0 flex-1" title={fileName}>
+                            {fileName}
+                          </span>
                         </div>
-                        <span className="text-[11px] leading-tight line-clamp-2 break-all w-full" title={fileName}>
-                          {truncateMiddle(fileName)}
-                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"
+                          title={`下载 ${fileName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDownload(f.relPath);
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title={`删除文件 ${fileName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget({ relPath: f.relPath, name: fileName, isDirectory: false });
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     );
                   })}
@@ -654,7 +830,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
           const files = e.target.files;
           if (files?.length) {
             const entries = Array.from(files).map((f) => ({ file: f }));
-            void uploadFiles(entries, browsePath);
+            enqueueUploads(entries, browsePath);
           }
           if (fileInputRef.current) fileInputRef.current.value = '';
         }}
@@ -675,7 +851,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
               file: f,
               relativePath: (f as any).webkitRelativePath as string | undefined,
             }));
-            void uploadFiles(entries, browsePath);
+            enqueueUploads(entries, browsePath);
           }
           if (folderInputRef.current) folderInputRef.current.value = '';
         }}
@@ -686,6 +862,70 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         relPath={previewPath}
         onOpenChange={(open) => { if (!open) setPreviewPath(null); }}
       />
+
+      <UploadListDialog
+        open={listOpen}
+        onOpenChange={setListOpen}
+        tasks={tasks}
+        onRetry={retryTask}
+        onRetryAllFailed={retryAllFailed}
+        onClearFinished={clearFinished}
+      />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <div>
+                <DialogTitle>确认删除</DialogTitle>
+                <DialogDescription className="mt-1">
+                  {deleteTarget?.isDirectory
+                    ? '将永久删除文件夹及其所有内容'
+                    : '将永久删除该文件'}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <DialogBody>
+            <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2.5">
+              {deleteTarget?.isDirectory ? (
+                <Folder className="h-5 w-5 shrink-0 text-amber-500/80" strokeWidth={1.25} />
+              ) : (
+                <File className="h-5 w-5 shrink-0 text-muted-foreground/60" strokeWidth={1.25} />
+              )}
+              <span className="text-sm font-medium truncate">{deleteTarget?.name ?? ''}</span>
+            </div>
+            <p className="mt-3 text-xs text-destructive">此操作不可撤销，请谨慎操作。</p>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => { void handleDelete(); }}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  删除中…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  确认删除
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Portal tooltip — avoids clipping by overflow containers */}
       {tipPath &&

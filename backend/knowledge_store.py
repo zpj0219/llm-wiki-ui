@@ -100,6 +100,33 @@ def save_page(rel_path: str, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def delete_entry(rel_path: str) -> None:
+    """删除文件或目录（需在 raw/ 或 wiki/ 下，不允许删除顶级分类目录）"""
+    rel = rel_path.replace("\\", "/").strip("/")
+    if not (rel.startswith("raw/") or rel.startswith("wiki/")):
+        raise ValueError("仅允许删除 raw/ 或 wiki/ 下的条目")
+
+    # 禁止删除顶级分类目录
+    top_categories = {
+        "raw/originals", "raw/fulltext", "raw/inbox",
+        "wiki/entities", "wiki/topics", "wiki/sources",
+        "raw", "wiki",
+    }
+    if rel in top_categories:
+        raise ValueError("不允许删除系统分类目录")
+
+    path = resolve_rel(rel)
+    if not path.exists():
+        raise ValueError("路径不存在")
+
+    import shutil
+
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
 def list_entries() -> list[dict[str, Any]]:
     ensure_kb_root()
     entries: list[dict[str, Any]] = []
