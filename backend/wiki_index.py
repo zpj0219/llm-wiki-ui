@@ -32,6 +32,56 @@ def _parse_frontmatter_title(content: str) -> str | None:
     return m.group(1).strip().strip("\"'")
 
 
+def _parse_frontmatter_field(content: str, field: str) -> str | None:
+    """Extract a single-value field from YAML frontmatter (e.g. source_file, author)."""
+    if not content.startswith("---"):
+        return None
+    end = content.find("\n---", 3)
+    if end == -1:
+        return None
+    fm = content[3:end]
+    # Match quoted or unquoted value
+    m = re.search(rf"^{field}:\s*(.+)$", fm, re.MULTILINE)
+    if not m:
+        return None
+    return m.group(1).strip().strip("\"'")
+
+
+def _extract_file_refs(content: str) -> set[str]:
+    """From a wiki page content, extract all terms that look like
+    references to original files (source_file, wikilinks with extensions,
+    raw/originals/ paths). Returns a set of stems and basenames."""
+    refs: set[str] = set()
+
+    # 1. Structured source_file in frontmatter (most reliable)
+    sf = _parse_frontmatter_field(content, "source_file")
+    if sf:
+        refs.add(sf)                        # e.g. "设备手册.pdf"
+        stem = sf.rsplit(".", 1)[0]
+        if stem:
+            refs.add(stem)                  # e.g. "设备手册"
+
+    # 2. Wikilinks that point to non-md files (contain an extension)
+    for link in _parse_wikilinks(content):
+        if "." in link and not link.lower().endswith(".md"):
+            refs.add(link)                  # e.g. "设备手册.pdf"
+            stem = link.rsplit(".", 1)[0]
+            if stem:
+                refs.add(stem)              # e.g. "设备手册"
+
+    # 3. raw/originals/ paths appearing in body text
+    for m in re.finditer(r"raw/originals/[^\s)\]]+", content):
+        path = m.group(0).strip("/")
+        refs.add(path)                      # full relative path
+        filename = path.rsplit("/", 1)[-1]
+        refs.add(filename)                  # basename with extension
+        if "." in filename:
+            stem = filename.rsplit(".", 1)[0]
+            refs.add(stem)                  # stem only
+
+    return refs
+
+
 def _parse_wikilinks(content: str) -> list[str]:
     return [m.group(1).strip().replace("\\", "/") for m in WIKILINK_RE.finditer(content)]
 
@@ -109,6 +159,8 @@ def build_index(force: bool = False) -> dict[str, Any]:
 
     pages: list[dict[str, Any]] = []
     backlinks: dict[str, list[str]] = {}
+    # Inverted index: original-file term → set of wiki page paths that reference it
+    stem_to_pages: dict[str, set[str]] = {}
 
     for rel in md_paths:
         content = pages_data.get(rel, "")
@@ -127,6 +179,12 @@ def build_index(force: bool = False) -> dict[str, Any]:
             }
         )
 
+        # Build inverted index for original-file → wiki-page lookup
+        for term in _extract_file_refs(content):
+            if term not in stem_to_pages:
+                stem_to_pages[term] = set()
+            stem_to_pages[term].add(rel)
+
     for p in pages:
         for target in p["outbound"]:
             if target not in backlinks:
@@ -139,6 +197,7 @@ def build_index(force: bool = False) -> dict[str, Any]:
         "pages": pages,
         "backlinks": backlinks,
         "byTitle": by_title,
+        "stemToPages": stem_to_pages,
     }
     return _cached
 

@@ -275,11 +275,13 @@ def get_all_originals_status() -> dict[str, dict[str, Any]]:
     if not originals_files:
         return result
 
-    # 构建 wiki 索引，用于阶段三判定
+    # 构建 wiki 索引，获取倒排索引表用于阶段三快速判定
     try:
         wiki_index = build_index()
+        stem_to_pages: dict[str, set[str]] = wiki_index.get("stemToPages", {})
         wiki_pages = wiki_index.get("pages", [])
     except Exception:
+        stem_to_pages = {}
         wiki_pages = []
 
     for fpath in originals_files:
@@ -310,16 +312,32 @@ def get_all_originals_status() -> dict[str, dict[str, Any]]:
                 except ValueError:
                     pass
 
-        # 阶段三：检查 wiki 是否引用了该文件
+        # 阶段三：通过倒排索引查找 wiki 页面引用（O(1)）
         stem_name = fpath.stem
         orig_basename = fpath.name
-        for page in wiki_pages:
-            content = page.get("content", "")
-            # 匹配 source_file/文件名/stem
-            if orig_basename in content or stem_name in content or rel_norm in content:
-                status["stage"] = "wiki"
-                status["wikiPage"] = page["relPath"]
-                break
+        matching_pages: set[str] = set()
+
+        # 主路径：倒排索引哈希查找
+        for term in (stem_name, orig_basename, rel_norm):
+            if term in stem_to_pages:
+                matching_pages |= stem_to_pages[term]
+                break  # 任一项命中即可
+
+        # 回退路径：结构化索引未命中时，兜底全量子串搜索
+        if not matching_pages and wiki_pages:
+            for page in wiki_pages:
+                content = page.get("content", "")
+                if orig_basename in content or stem_name in content or rel_norm in content:
+                    matching_pages.add(page["relPath"])
+                    # 补充写入倒排索引，下次即可命中快速路径
+                    if stem_name not in stem_to_pages:
+                        stem_to_pages[stem_name] = set()
+                    stem_to_pages[stem_name].add(page["relPath"])
+                    break
+
+        if matching_pages:
+            status["stage"] = "wiki"
+            status["wikiPage"] = next(iter(matching_pages))
 
         result[rel] = status
 
