@@ -151,7 +151,14 @@ def list_entries() -> list[dict[str, Any]]:
                 if d not in dirs_seen:
                     dirs_seen.add(d)
                     entries.append({"relPath": d, "isDirectory": True})
-            entries.append({"relPath": rel, "isDirectory": False})
+            entry: dict[str, Any] = {"relPath": rel, "isDirectory": False}
+            try:
+                st = (root / rel).stat()
+                entry["size"] = st.st_size
+                entry["modifiedAt"] = st.st_mtime
+            except OSError:
+                pass
+            entries.append(entry)
 
     entries.sort(key=lambda e: (not e["isDirectory"], e["relPath"]))
     return entries

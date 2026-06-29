@@ -163,6 +163,18 @@ async function getFilesFromDataTransfer(items: DataTransferItemList): Promise<Dr
   return { files, dirPaths };
 }
 
+/** Unix timestamp (秒) → 紧凑日期字符串 */
+function formatMtime(ts: number): string {
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const datePart = sameYear
+    ? `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${datePart} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const STAGE_TOOLTIPS: Record<string, string> = {
   uploaded: '待处理 — 等待全文提取',
   fulltext: '已提取全文 — 等待实体生成',
@@ -724,37 +736,41 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                       <div
                         key={dir.relPath}
                         className={cn(
-                          'flex items-center gap-1 rounded-md pr-1 transition-colors',
+                          'grid items-center gap-2 px-3 py-1.5 rounded-md transition-colors',
                           'hover:bg-accent/70',
                           isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
                         )}
+                        style={{ gridTemplateColumns: '40px 4fr 0.5fr 1fr 1.5fr auto' }}
+                        onDoubleClick={() => handleFileDoubleClick(dir)}
+                        onDragEnter={isOriginals ? (e) => handleFolderDragEnter(e, dir.relPath) : undefined}
+                        onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
+                        onDragOver={isOriginals ? handleDragOver : undefined}
+                        onDrop={isOriginals ? (e) => handleFolderDrop(e, dir.relPath) : undefined}
+                        title={`双击打开 ${dirName}`}
                       >
-                        <button
-                          type="button"
-                          className="flex items-center gap-2 pl-3 py-1.5 rounded-md flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                          onDoubleClick={() => handleFileDoubleClick(dir)}
-                          onDragEnter={isOriginals ? (e) => handleFolderDragEnter(e, dir.relPath) : undefined}
-                          onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
-                          onDragOver={isOriginals ? handleDragOver : undefined}
-                          onDrop={isOriginals ? (e) => handleFolderDrop(e, dir.relPath) : undefined}
-                          title={`双击打开 ${dirName}`}
-                        >
-                          <Folder className="h-10 w-10 shrink-0 text-amber-500/80" strokeWidth={1.25} />
-                          <span className="text-xs truncate min-w-0">{dirName}</span>
-                        </button>
+                        <Folder className="h-10 w-10 text-amber-500/80" strokeWidth={1.25} />
+                        <span className="text-xs truncate min-w-0">{dirName}</span>
+                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] text-muted-foreground/40 bg-muted/30 px-1 py-0.5 rounded truncate justify-self-center">
+                          目录
+                        </span>
+                        <span className="hidden sm:inline" />
+                        <span className="hidden sm:inline" />
                         {isOriginals && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                            title={`删除文件夹 ${dirName}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteTarget({ relPath: dir.relPath, name: dirName, isDirectory: true });
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center gap-0.5 justify-end">
+                            <span className="w-7" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              title={`删除文件夹 ${dirName}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget({ relPath: dir.relPath, name: dirName, isDirectory: true });
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         )}
                       </div>
                     );
@@ -764,56 +780,81 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                   {files.map((f) => {
                     const status = statusMap.get(f.relPath);
                     const fileName = f.relPath.split('/').pop() ?? f.relPath;
+                    const ext = fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : null;
+                    const statusLabel =
+                      status?.stage === 'uploaded' ? '待处理'
+                      : status?.stage === 'fulltext' ? '全文已提取'
+                      : status?.stage === 'wiki' ? '已生成实体'
+                      : null;
+                    const mtime = f.modifiedAt ? formatMtime(f.modifiedAt) : null;
                     return (
                       <div
                         key={f.relPath}
-                        className="flex items-center gap-1 rounded-md pr-1 transition-colors hover:bg-accent/70"
+                        className="grid items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-accent/70"
+                        style={{ gridTemplateColumns: '40px 4fr 0.5fr 1fr 1.5fr auto' }}
+                        onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
+                        onMouseLeave={hideTip}
+                        onDoubleClick={() => setPreviewPath(f.relPath)}
                       >
-                        <div
-                          className="flex items-center gap-2 pl-3 py-1.5 rounded-md flex-1 min-w-0"
-                          onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
-                          onMouseLeave={hideTip}
-                          onDoubleClick={() => setPreviewPath(f.relPath)}
-                        >
-                          <div className="relative shrink-0">
-                            <File className="h-10 w-10 text-muted-foreground/60" strokeWidth={1.25} />
-                            {status && (
-                              <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-px">
-                                <FileStatusIcon status={status.stage} />
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs truncate min-w-0 flex-1" title={fileName}>
-                            {fileName}
-                          </span>
+                        {/* Icon */}
+                        <div className="relative">
+                          <File className="h-10 w-10 text-muted-foreground/60" strokeWidth={1.25} />
+                          {status && (
+                            <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-px">
+                              <FileStatusIcon status={status.stage} />
+                            </span>
+                          )}
                         </div>
+                        {/* Name */}
+                        <span className="text-xs truncate min-w-0" title={fileName}>
+                          {fileName}
+                        </span>
+                        {/* Type badge — narrow badge centered in column */}
+                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] font-mono text-muted-foreground/50 bg-muted/30 px-1 py-0.5 rounded tracking-wide truncate justify-self-center">
+                          {ext ?? '—'}
+                        </span>
+                        {/* Status label — fixed width centered in column */}
+                        <span className={cn(
+                          'hidden sm:inline-flex justify-center w-[72px] text-[11px] whitespace-nowrap truncate justify-self-center',
+                          status?.stage === 'uploaded' && 'text-amber-600',
+                          status?.stage === 'fulltext' && 'text-blue-600',
+                          status?.stage === 'wiki' && 'text-green-600',
+                          !statusLabel && 'text-muted-foreground/30',
+                        )}>
+                          {statusLabel ?? '—'}
+                        </span>
+                        {/* Modified time — fixed width centered in column */}
+                        <span className="hidden sm:inline-flex items-center w-[110px] text-[11px] text-muted-foreground/50 font-mono tabular-nums truncate justify-self-center">
+                          {mtime ?? '—'}
+                        </span>
+                        {/* Actions */}
                         {isOriginals && (
-                          <>
+                          <div className="flex items-center gap-0.5 justify-end">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"
+                              className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground"
                               title={`下载 ${fileName}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 void handleDownload(f.relPath);
                               }}
                             >
-                              <Download className="h-4 w-4" />
+                              <Download className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                               title={`删除文件 ${fileName}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setDeleteTarget({ relPath: f.relPath, name: fileName, isDirectory: false });
                               }}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                          </>
+                          </div>
                         )}
                       </div>
                     );

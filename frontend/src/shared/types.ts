@@ -1,6 +1,8 @@
 export type WikiFileEntry = {
   relPath: string;
   isDirectory: boolean;
+  size?: number;
+  modifiedAt?: number;
 };
 
 export type WikiGraphNode = {
