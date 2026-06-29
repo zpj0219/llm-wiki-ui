@@ -21,6 +21,7 @@ type SiteHeaderProps = {
   onLlmWikiTabChange: (tab: LLMWikiTab) => void;
   onRefresh: () => void;
   onNewChat?: () => void;
+  isMobile?: boolean;
 };
 
 export function SiteHeader({
@@ -31,6 +32,7 @@ export function SiteHeader({
   onLlmWikiTabChange,
   onRefresh,
   onNewChat,
+  isMobile,
 }: SiteHeaderProps) {
   const pageLabel = sidebarCollapsed ? 'LLM-Wiki' : (PAGE_LABELS[currentPage] ?? currentPage);
   const PageIcon =
@@ -42,7 +44,7 @@ export function SiteHeader({
       className={cn(
         'shrink-0 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-sm',
         currentPage === PAGES.CHAT
-          ? 'grid grid-cols-[minmax(0,1fr)_minmax(160px,16rem)_minmax(0,1fr)] items-center gap-4'
+          ? 'grid grid-cols-[1fr_auto] items-center gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(160px,16rem)_minmax(0,1fr)] lg:gap-4'
           : 'flex items-center justify-between gap-4 flex-wrap'
       )}
     >
@@ -51,6 +53,7 @@ export function SiteHeader({
           collapsed={sidebarCollapsed}
           onToggle={onToggleSidebar}
           className="-ml-1"
+          isMobile={isMobile}
         />
         <div className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />
         <div className="flex size-9 items-center justify-center rounded-lg bg-primary/5 text-primary shrink-0">
@@ -65,7 +68,7 @@ export function SiteHeader({
       </div>
 
       {currentPage === PAGES.CHAT && chatHeaderExtras && (
-        <div className="flex w-full min-w-0 justify-center justify-self-center px-2">
+        <div className="flex w-full min-w-0 justify-center col-span-2 lg:col-span-1 justify-self-center px-2">
           {chatHeaderExtras}
         </div>
       )}

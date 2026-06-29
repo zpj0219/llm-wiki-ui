@@ -26,7 +26,7 @@ export function SettingsPage({ onLogout }: SettingsPageProps) {
     <ScrollArea className="flex-1 min-h-0">
       <div className="px-4 py-4">
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-          <nav className="flex md:flex-col gap-1 md:w-40 shrink-0 overflow-x-auto pb-1 md:pb-0">
+          <nav className="flex md:flex-col gap-1 md:w-40 shrink-0 overflow-x-auto pb-1 md:pb-0" style={{ touchAction: 'auto' }}>
             {SETTINGS_TABS.map((t) => {
               const Icon = TAB_ICONS[t.id];
               return (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Eye, File, FileText, LayoutGrid, Link2, Loader2, Pencil, Save } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, File, FileText, LayoutGrid, Link2, Loader2, Menu, Pencil, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,6 +15,7 @@ import type { WikiFileEntry } from '@shared/types';
 import { WikiFileTree } from './WikiFileTree';
 import { WikiMarkdownPreview } from './WikiMarkdownPreview';
 import { WikiPathBreadcrumb } from './WikiPathBreadcrumb';
+import { Sheet, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 
 type WikiWorkbenchProps = {
   refreshKey?: number;
@@ -38,7 +39,15 @@ function getInitialSidebarWidth(): number {
     : WIKI_SIDEBAR_DEFAULT_WIDTH;
 }
 
+function useIsMobile() {
+  const [v, setV] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches);
+  useEffect(() => { const m = window.matchMedia('(max-width: 1023px)'); const h = (e: MediaQueryListEvent) => setV(e.matches); m.addEventListener('change', h); return () => m.removeEventListener('change', h); }, []);
+  return v;
+}
+
 export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProps) {
+  const isMobile = useIsMobile();
+  const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [files, setFiles] = useState<WikiFileEntry[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -178,9 +187,32 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
         </div>
       )}
       <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* 移动端文件树 Sheet */}
+        <Sheet open={isMobile && mobileTreeOpen} onOpenChange={setMobileTreeOpen}>
+          <SheetHeader>
+            <SheetTitle>工作台</SheetTitle>
+            <SheetClose onClose={() => setMobileTreeOpen(false)} />
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto py-1">
+            {WIKI_SUBS.map((sub) => {
+              const subOpen = expandedNodes.has(sub);
+              return (
+                <div key={sub}>
+                  <button type="button" className={cn('w-full flex items-center justify-between py-1.5 text-xs font-medium', subOpen ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/60')} style={{ paddingLeft: '2rem', paddingRight: '0.5rem' }} onClick={() => { const n = new Set(expandedNodes); subOpen ? n.delete(sub) : n.add(sub); setExpandedNodes(n); }}>
+                    <span className="truncate">{categoryLabel(sub)}</span>
+                    <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform', subOpen && 'rotate-90')} />
+                  </button>
+                  {subOpen && <div style={{ paddingLeft: '2rem' }}><WikiFileTree files={files} selectedPath={selectedPath} onSelect={(p) => { void openPage(p); setMobileTreeOpen(false); }} rootPath={sub} /></div>}
+                </div>
+              );
+            })}
+          </div>
+        </Sheet>
+
+        {/* 桌面端侧边栏 */}
         <div
           className={cn(
-            'relative border-r border-border bg-muted/30 flex flex-col min-w-0 shrink-0',
+            'hidden lg:flex relative border-r border-border bg-muted/30 flex-col min-w-0 shrink-0',
             !isResizingSidebar && 'transition-[width] duration-300',
             sidebarCollapsed && 'w-12'
           )}
@@ -273,6 +305,15 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
         </div>
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* 移动端文件树按钮 */}
+          {isMobile && (
+            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMobileTreeOpen(true)}>
+                <Menu className="h-4 w-4" />
+              </Button>
+              <span className="text-xs font-medium text-muted-foreground">页面列表</span>
+            </div>
+          )}
           {selectedPath ? (
             (() => {
               const isWikiSelected = isWikiDirMarkdown(selectedPath);

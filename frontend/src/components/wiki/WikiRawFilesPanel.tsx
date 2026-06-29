@@ -762,9 +762,9 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const isEmpty = dirs.length === 0 && files.length === 0;
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {error && (
-        <div className="shrink-0 px-4 py-2 bg-destructive/10 text-destructive text-xs border-b">
+        <div className="shrink-0 px-4 py-2 bg-destructive/10 text-destructive text-xs border-b truncate">
           {error}
         </div>
       )}
@@ -825,7 +825,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
 
         {/* Navigation bar — hidden on upload list */}
         {!isUploadList && (
-        <div className="flex items-center gap-2 pb-2">
+        <div className="flex items-center gap-2 pb-2 flex-wrap">
           <button
             type="button"
             className={cn(
@@ -841,7 +841,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
           </button>
 
           {/* Breadcrumb */}
-          <div className="flex items-center gap-1 text-xs">
+          <div className="flex items-center gap-1 text-xs min-w-0 overflow-hidden">
             {breadcrumbs.map((seg, idx) => (
               <div key={seg.path} className="flex items-center gap-1">
                 {idx > 0 && <span className="text-muted-foreground/40">/</span>}
@@ -862,7 +862,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
 
           {isOriginals && (
             <div className="flex items-center gap-2 ml-auto">
-              <span className="text-[11px] text-muted-foreground/50">
+              <span className="hidden sm:inline text-[11px] text-muted-foreground/50">
                 支持文件拖放上传
               </span>
               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
@@ -926,10 +926,10 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                         key={dir.relPath}
                         className={cn(
                           'grid items-center gap-2 px-3 py-1.5 rounded-md transition-colors',
+                          'grid-cols-[40px_minmax(0,1fr)_auto] sm:grid-cols-[40px_minmax(0,4fr)_minmax(0,0.5fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto]',
                           'hover:bg-accent/70',
                           isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
                         )}
-                        style={{ gridTemplateColumns: '40px 4fr 0.5fr 1fr 1.5fr auto' }}
                         onClick={() => handleFileDoubleClick(dir)}
                         onDragEnter={isOriginals ? (e) => handleFolderDragEnter(e, dir.relPath) : undefined}
                         onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
@@ -979,8 +979,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                     return (
                       <div
                         key={f.relPath}
-                        className="grid items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-accent/70"
-                        style={{ gridTemplateColumns: '40px 4fr 0.5fr 1fr 1.5fr auto' }}
+                        className="grid items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-accent/70 grid-cols-[40px_minmax(0,1fr)_auto] sm:grid-cols-[40px_minmax(0,4fr)_minmax(0,0.5fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto]"
                         onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
                         onMouseLeave={hideTip}
                         onClick={() => setPreviewPath(f.relPath)}
@@ -1101,7 +1100,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[95vw] sm:max-w-sm">
           <DialogHeader>
             <div className="flex items-center gap-2">
               <div className="flex size-9 items-center justify-center rounded-lg bg-destructive/10 text-destructive">

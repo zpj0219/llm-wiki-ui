@@ -151,7 +151,7 @@ export function WikiGraphView({
   const [focusId, setFocusId] = useState<string | null>(focusPath);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(true);
+  const [showSettings, setShowSettings] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 1023px)').matches);
   const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0 });
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   const [growthFrame, setGrowthFrame] = useState(0);

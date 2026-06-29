@@ -36,7 +36,7 @@ export function ChatMarkdown({ content, className, variant = 'default' }: ChatMa
             <pre {...props}>{children}</pre>
           ),
           table: ({ children, ...props }) => (
-            <div className="overflow-x-auto my-2">
+            <div className="overflow-x-auto my-2" style={{ touchAction: 'auto' }}>
               <table {...props}>{children}</table>
             </div>
           ),

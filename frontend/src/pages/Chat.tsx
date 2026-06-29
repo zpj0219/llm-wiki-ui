@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Menu,
   MessageSquare,
   Plus,
   Send,
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Sheet, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import {
   clearChatSession,
@@ -93,12 +95,20 @@ function mergeSessionWithSteps(session: ChatSession, steps: ChatStep[]): ChatSes
   };
 }
 
+function useIsMobile() {
+  const [v, setV] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches);
+  useEffect(() => { const m = window.matchMedia('(max-width: 1023px)'); const h = (e: MediaQueryListEvent) => setV(e.matches); m.addEventListener('change', h); return () => m.removeEventListener('change', h); }, []);
+  return v;
+}
+
 type ChatPageProps = {
   newSessionTrigger?: number;
 };
 
 export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isMobile = useIsMobile();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => isMobile);
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
@@ -247,6 +257,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const handleSelectSession = async (sessionId: string) => {
     if (sessionId === currentSessionId) return;
     setCurrentSessionId(sessionId);
+    setMobileSessionsOpen(false);
     setError(null);
     const res = await getChatSession(sessionId);
     if (!res.success || !res.session) {
@@ -491,8 +502,35 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const messages = currentSession?.messages ?? [];
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* 会话侧栏 */}
+    <div className="flex h-full min-w-0 min-h-0">
+      {/* 移动端会话列表 Sheet */}
+      <Sheet open={isMobile && mobileSessionsOpen} onOpenChange={setMobileSessionsOpen}>
+        <SheetHeader>
+          <SheetTitle>对话</SheetTitle>
+          <SheetClose onClose={() => setMobileSessionsOpen(false)} />
+        </SheetHeader>
+        <ScrollArea className="flex-1 min-h-0 [&>[data-radix-scroll-area-viewport]]:!h-full">
+          <div className="p-2 space-y-0.5">
+            {loading && !sessions.length ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /></div>
+            ) : sessions.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6 px-2">暂无对话</p>
+            ) : (
+              sessions.map((session) => (
+                <div key={session.id} className={cn('group flex items-center gap-1 rounded-md min-w-0', currentSessionId === session.id ? 'bg-accent' : 'hover:bg-accent/50')}>
+                  <button type="button" onClick={() => void handleSelectSession(session.id)} className={cn('flex-1 flex items-center gap-2 px-2 py-2 text-sm rounded-md min-w-0 text-left', currentSessionId === session.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')} title={session.name}>
+                    <MessageSquare className="h-4 w-4 shrink-0" /><span className="truncate">{truncateName(session.name)}</span>
+                  </button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100" onClick={() => void handleDeleteSession(session.id)} title="删除"><Trash2 className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                </div>
+              ))
+            )}
+          </div>
+        </ScrollArea>
+      </Sheet>
+
+      {/* 桌面端会话侧栏 */}
+      {!isMobile && (
       <aside
         className={cn(
           'flex flex-col border-r border-border bg-muted/20 shrink-0 transition-[width] duration-200',
@@ -531,7 +569,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
           </div>
         </div>
 
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 [&>[data-radix-scroll-area-viewport]]:!h-full">
           <div className="p-2 space-y-0.5">
             {loading && !sessions.length ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground">
@@ -586,9 +624,22 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
           </div>
         </ScrollArea>
       </aside>
+      )}
 
       {/* 主对话区 */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* 移动端会话菜单按钮 */}
+        {isMobile && (
+          <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMobileSessionsOpen(true)}>
+              <Menu className="h-4 w-4" />
+            </Button>
+            <span className="text-xs font-medium truncate">{currentSession?.name ?? '对话'}</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" onClick={() => void handleNewSession()}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
         {error && (
           <div className="shrink-0 mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {error}
@@ -603,7 +654,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
           </div>
         )}
 
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 [&>[data-radix-scroll-area-viewport]]:!h-full">
           <div className="w-full px-4 py-6 space-y-6">
             {loading && !messages.length ? (
               <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-2">

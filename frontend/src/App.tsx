@@ -9,10 +9,19 @@ import { PAGES, type PageId, type LLMWikiTab } from '@shared/constants';
 import { AUTH_EXPIRED_EVENT, isLoggedInLocally } from '@/services/authSession';
 import { refreshWikiIndex } from '@/services/wikiApi';
 import { ChatHeaderExtrasProvider } from '@/contexts/ChatHeaderExtras';
+import { Sheet, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+
+function useIsMobile() {
+  const [v, setV] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches);
+  useEffect(() => { const m = window.matchMedia('(max-width: 1023px)'); const h = (e: MediaQueryListEvent) => setV(e.matches); m.addEventListener('change', h); return () => m.removeEventListener('change', h); }, []);
+  return v;
+}
 
 export default function App() {
+  const isMobile = useIsMobile();
   const [isLoggedIn, setIsLoggedIn] = useState(() => isLoggedInLocally());
   const [currentPage, setCurrentPage] = useState<PageId>(PAGES.LLM_WIKI);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [llmWikiTab, setLlmWikiTab] = useState<LLMWikiTab>('workbench');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -71,34 +80,47 @@ export default function App() {
 
   return (
     <ChatHeaderExtrasProvider>
-    <div className="app-shell flex h-full overflow-hidden">
-      <div
-        className="h-full shrink-0 transition-[max-width,width,min-width,opacity,transform] duration-250 ease-in-out will-change-[transform,width]"
-        style={{
-          width: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
-          minWidth: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
-          maxWidth: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
-          overflow: 'hidden',
-          opacity: sidebarCollapsed ? 0 : 1,
-          pointerEvents: sidebarCollapsed ? 'none' : 'auto',
-          transform: sidebarCollapsed ? 'translateX(-12px)' : 'translateX(0)',
-        }}
-      >
-        <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
-      </div>
+    <div className="app-shell flex h-full w-full max-w-full min-w-0 overflow-hidden">
+      {/* Desktop sidebar — only rendered on desktop */}
+      {!isMobile && (
+        <div
+          className="h-full shrink-0 transition-[max-width,width,min-width,opacity,transform] duration-250 ease-in-out will-change-[transform,width]"
+          style={{
+            width: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
+            minWidth: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
+            maxWidth: sidebarCollapsed ? '0px' : 'var(--sidebar-width)',
+            overflow: 'hidden',
+            opacity: sidebarCollapsed ? 0 : 1,
+            pointerEvents: sidebarCollapsed ? 'none' : 'auto',
+            transform: sidebarCollapsed ? 'translateX(-12px)' : 'translateX(0)',
+          }}
+        >
+          <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+        </div>
+      )}
 
-      <div className="app-main flex-1 flex flex-col min-w-0 m-3 rounded-xl border border-border bg-card overflow-hidden">
+      {/* Mobile navigation Sheet */}
+      <Sheet open={isMobile && mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetHeader>
+          <SheetTitle>导航</SheetTitle>
+          <SheetClose onClose={() => setMobileMenuOpen(false)} />
+        </SheetHeader>
+        <Sidebar currentPage={currentPage} onPageChange={(p) => { setCurrentPage(p); setMobileMenuOpen(false); }} />
+      </Sheet>
+
+      <div className="app-main flex-1 flex flex-col min-w-0 mx-0 my-1.5 lg:m-3 rounded-xl border border-border bg-card overflow-hidden">
         <SiteHeader
           sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+          onToggleSidebar={() => isMobile ? setMobileMenuOpen(true) : setSidebarCollapsed((v) => !v)}
           currentPage={currentPage}
           llmWikiTab={llmWikiTab}
           onLlmWikiTabChange={setLlmWikiTab}
           onRefresh={() => void handleRefresh()}
           onNewChat={() => setChatNewSessionTrigger((k) => k + 1)}
+          isMobile={isMobile}
         />
 
-        <main className="flex-1 min-h-0 overflow-hidden">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden">
           {currentPage === PAGES.LLM_WIKI && (
             <LLMWikiPage
               activeTab={llmWikiTab}
