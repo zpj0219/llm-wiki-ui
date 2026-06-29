@@ -1,5 +1,6 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { WikiWorkbench } from '@/components/wiki/WikiWorkbench';
+import { WikiRawFilesPanel } from '@/components/wiki/WikiRawFilesPanel';
 import { WikiGraphView } from '@/components/wiki/WikiGraphView';
 import { WikiSearchPanel } from '@/components/wiki/WikiSearchPanel';
 import type { LLMWikiTab } from '@shared/constants';
@@ -35,6 +36,15 @@ export function LLMWikiPage({
               onActiveTabChange('graph');
               window.dispatchEvent(new CustomEvent('llm-wiki:graph-focus', { detail: rel }));
             }}
+          />
+        </TabsContent>
+
+        <TabsContent
+          value="rawfiles"
+          className="flex-1 flex flex-col m-0 min-h-0 overflow-hidden data-[state=inactive]:hidden"
+        >
+          <WikiRawFilesPanel
+            refreshKey={refreshKey}
           />
         </TabsContent>
 

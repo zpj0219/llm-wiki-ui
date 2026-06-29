@@ -82,3 +82,12 @@ export type ChatSessionSummary = {
   messageCount: number;
   modelId?: string;
 };
+
+export type OriginalStage = 'uploaded' | 'fulltext' | 'wiki';
+
+export type OriginalsFileStatus = {
+  relPath: string;
+  filename: string;
+  stage: OriginalStage;
+  wikiPage?: string;
+};

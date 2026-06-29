@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw, Upload } from 'lucide-react';
+import { BarChart3, BookOpen, FolderOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,6 +8,7 @@ import { useChatHeaderExtrasSlot } from '@/contexts/ChatHeaderExtras';
 
 const TAB_ICONS: Record<LLMWikiTab, typeof LayoutGrid> = {
   workbench: LayoutGrid,
+  rawfiles: FolderOpen,
   graph: Network,
   search: BarChart3,
 };
@@ -20,7 +21,6 @@ type SiteHeaderProps = {
   onLlmWikiTabChange: (tab: LLMWikiTab) => void;
   onRefresh: () => void;
   onNewChat?: () => void;
-  onUploadFile?: () => void;
 };
 
 export function SiteHeader({
@@ -31,7 +31,6 @@ export function SiteHeader({
   onLlmWikiTabChange,
   onRefresh,
   onNewChat,
-  onUploadFile,
 }: SiteHeaderProps) {
   const pageLabel = sidebarCollapsed ? 'LLM-Wiki' : (PAGE_LABELS[currentPage] ?? currentPage);
   const PageIcon =
@@ -89,16 +88,10 @@ export function SiteHeader({
 
       <div className="flex items-center gap-2 shrink-0 justify-self-end">
         {currentPage === PAGES.LLM_WIKI && (
-          <>
-            <Button variant="outline" size="sm" onClick={onRefresh}>
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              刷新
-            </Button>
-            <Button variant="outline" size="sm" onClick={onUploadFile}>
-              <Upload className="h-3.5 w-3.5 mr-1.5" />
-              上传原件
-            </Button>
-          </>
+          <Button variant="outline" size="sm" onClick={onRefresh}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            刷新
+          </Button>
         )}
         {currentPage === PAGES.CHAT && onNewChat && (
           <Button variant="outline" size="sm" onClick={onNewChat}>

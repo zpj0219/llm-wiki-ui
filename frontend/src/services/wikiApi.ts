@@ -1,5 +1,6 @@
 import { requestJson } from './api';
 import type {
+  OriginalsFileStatus,
   WikiFileEntry,
   WikiGraphEdge,
   WikiGraphNode,
@@ -90,4 +91,70 @@ export async function getWikiStats(): Promise<WikiStats> {
 
 export async function refreshWikiIndex(): Promise<void> {
   await requestJson('/api/wiki/refresh', { method: 'POST' });
+}
+
+export async function getOriginalsStatus(): Promise<{
+  success: boolean;
+  statuses?: Record<string, OriginalsFileStatus>;
+  error?: string;
+}> {
+  try {
+    const res = await requestJson<
+      ApiResult<{ statuses: Record<string, OriginalsFileStatus> }>
+    >('/api/wiki/originals-status');
+    return { success: true, statuses: res.statuses };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function ensureDir(dirPath: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requestJson('/api/wiki/ensure-dir', {
+      method: 'POST',
+      body: JSON.stringify({ dir_path: dirPath }),
+    });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function deleteWikiEntry(relPath: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requestJson(`/api/wiki/pages/${encodeURIComponent(relPath)}`, {
+      method: 'DELETE',
+    });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export function getDownloadUrl(relPath: string): string {
+  return `${import.meta.env.VITE_API_BASE ?? ''}/api/wiki/download/${encodeURIComponent(relPath)}`;
+}
+
+export async function downloadWikiFile(relPath: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { getAuthHeaders } = await import('./authSession');
+    const url = getDownloadUrl(relPath);
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as any).detail ?? `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const fileName = relPath.split('/').pop() ?? 'download';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }

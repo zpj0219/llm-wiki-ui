@@ -100,6 +100,33 @@ def save_page(rel_path: str, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def delete_entry(rel_path: str) -> None:
+    """删除文件或目录（需在 raw/ 或 wiki/ 下，不允许删除顶级分类目录）"""
+    rel = rel_path.replace("\\", "/").strip("/")
+    if not (rel.startswith("raw/") or rel.startswith("wiki/")):
+        raise ValueError("仅允许删除 raw/ 或 wiki/ 下的条目")
+
+    # 禁止删除顶级分类目录
+    top_categories = {
+        "raw/originals", "raw/fulltext", "raw/inbox",
+        "wiki/entities", "wiki/topics", "wiki/sources",
+        "raw", "wiki",
+    }
+    if rel in top_categories:
+        raise ValueError("不允许删除系统分类目录")
+
+    path = resolve_rel(rel)
+    if not path.exists():
+        raise ValueError("路径不存在")
+
+    import shutil
+
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
 def list_entries() -> list[dict[str, Any]]:
     ensure_kb_root()
     entries: list[dict[str, Any]] = []
@@ -205,7 +232,7 @@ def save_original(
         resolve_rel(dir_rel)
         dest_dir = resolve_rel(dir_rel)
         if not dest_dir.is_dir():
-            raise ValueError("目标路径不是目录")
+            dest_dir.mkdir(parents=True, exist_ok=True)
         rel = f"{dir_rel}/{safe_name}"
 
     dest = resolve_rel(rel)
@@ -220,3 +247,80 @@ def save_original(
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
     return rel
+
+
+def get_all_originals_status() -> dict[str, dict[str, Any]]:
+    """返回 raw/originals/ 下每个文件的处理阶段状态。
+
+    阶段判定：
+    - uploaded:  文件存在于 originals/
+    - fulltext:  raw/fulltext/maintenance/{cat}/{stem}.md 存在
+    - wiki:      wiki/ 页面引用了该文件（source_file frontmatter 或文件名匹配）
+    """
+    from wiki_index import build_index  # 避免循环导入
+
+    ensure_kb_root()
+    result: dict[str, dict[str, Any]] = {}
+    root = KNOWLEDGE_BASE_ROOT.resolve()
+
+    # 收集 originals 下所有文件
+    originals_path = resolve_rel(ORIGINALS_PREFIX)
+    originals_files: list[Path] = []
+    for dirpath, _dirnames, filenames in os.walk(originals_path):
+        for fn in filenames:
+            if _should_skip(fn):
+                continue
+            originals_files.append(Path(dirpath) / fn)
+
+    if not originals_files:
+        return result
+
+    # 构建 wiki 索引，用于阶段三判定
+    try:
+        wiki_index = build_index()
+        wiki_pages = wiki_index.get("pages", [])
+    except Exception:
+        wiki_pages = []
+
+    for fpath in originals_files:
+        try:
+            rel = fpath.relative_to(root).as_posix()
+        except ValueError:
+            continue
+
+        status: dict[str, Any] = {
+            "relPath": rel,
+            "filename": fpath.name,
+            "stage": "uploaded",
+        }
+
+        # 阶段二：检查 fulltext 是否存在
+        # raw/originals/maintenance/{cat}/{name}.ext → raw/fulltext/maintenance/{cat}/{name}.md
+        rel_norm = rel.replace("\\", "/")
+        if rel_norm.startswith("raw/originals/maintenance/"):
+            parts = rel_norm.split("/")
+            if len(parts) >= 6:
+                cat = parts[3]  # maintenance 下的子类
+                stem = Path(fpath.stem).name
+                fulltext_rel = f"raw/fulltext/maintenance/{cat}/{stem}.md"
+                try:
+                    ft_path = resolve_rel(fulltext_rel)
+                    if ft_path.is_file():
+                        status["stage"] = "fulltext"
+                except ValueError:
+                    pass
+
+        # 阶段三：检查 wiki 是否引用了该文件
+        stem_name = fpath.stem
+        orig_basename = fpath.name
+        for page in wiki_pages:
+            content = page.get("content", "")
+            # 匹配 source_file/文件名/stem
+            if orig_basename in content or stem_name in content or rel_norm in content:
+                status["stage"] = "wiki"
+                status["wikiPage"] = page["relPath"]
+                break
+
+        result[rel] = status
+
+    return result
