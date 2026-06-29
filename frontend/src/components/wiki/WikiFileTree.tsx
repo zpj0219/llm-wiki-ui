@@ -77,6 +77,10 @@ function buildWikiTree(files: WikiFileEntry[]): TreeNode[] {
   const sortNodes = (nodes: TreeNode[]) => {
     nodes.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      // index.md always on top of its directory group
+      const aIdx = a.name === 'index.md' ? 0 : 1;
+      const bIdx = b.name === 'index.md' ? 0 : 1;
+      if (aIdx !== bIdx) return aIdx - bIdx;
       return a.name.localeCompare(b.name, 'zh-CN');
     });
     nodes.forEach((n) => sortNodes(n.children));

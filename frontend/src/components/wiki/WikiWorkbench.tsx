@@ -361,8 +361,14 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                               <p className="text-sm text-muted-foreground">暂无其它页面链接到本页</p>
                             ) : (
                               <ul className="space-y-2">
-                                {backlinks.map((p) => (
-                                  <li key={p}>
+                                {[...backlinks].sort((a, b) => {
+                                  const aIdx = a.endsWith('/index.md') || a === 'wiki/index.md' ? 0 : 1;
+                                  const bIdx = b.endsWith('/index.md') || b === 'wiki/index.md' ? 0 : 1;
+                                  if (aIdx !== bIdx) return aIdx - bIdx;
+                                  return a.localeCompare(b, 'zh-CN');
+                                }).map((p) => (
+                                  <li key={p} className="flex items-center gap-1.5">
+                                    <Link2 className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
                                     <button
                                       type="button"
                                       className="text-sm text-blue-600 hover:underline dark:text-blue-400"

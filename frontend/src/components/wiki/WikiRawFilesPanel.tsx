@@ -741,7 +741,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                           isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
                         )}
                         style={{ gridTemplateColumns: '40px 4fr 0.5fr 1fr 1.5fr auto' }}
-                        onDoubleClick={() => handleFileDoubleClick(dir)}
+                        onClick={() => handleFileDoubleClick(dir)}
                         onDragEnter={isOriginals ? (e) => handleFolderDragEnter(e, dir.relPath) : undefined}
                         onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
                         onDragOver={isOriginals ? handleDragOver : undefined}
@@ -750,7 +750,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                       >
                         <Folder className="h-10 w-10 text-amber-500/80" strokeWidth={1.25} />
                         <span className="text-xs truncate min-w-0">{dirName}</span>
-                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] text-muted-foreground/40 bg-muted/30 px-1 py-0.5 rounded truncate justify-self-center">
+                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] text-muted-foreground/70 bg-muted/30 px-1 py-0.5 rounded truncate justify-self-center">
                           目录
                         </span>
                         <span className="hidden sm:inline" />
@@ -794,7 +794,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                         style={{ gridTemplateColumns: '40px 4fr 0.5fr 1fr 1.5fr auto' }}
                         onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
                         onMouseLeave={hideTip}
-                        onDoubleClick={() => setPreviewPath(f.relPath)}
+                        onClick={() => setPreviewPath(f.relPath)}
                       >
                         {/* Icon */}
                         <div className="relative">
@@ -810,7 +810,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                           {fileName}
                         </span>
                         {/* Type badge — narrow badge centered in column */}
-                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] font-mono text-muted-foreground/50 bg-muted/30 px-1 py-0.5 rounded tracking-wide truncate justify-self-center">
+                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] font-mono text-muted-foreground/70 bg-muted/30 px-1 py-0.5 rounded tracking-wide truncate justify-self-center">
                           {ext ?? '—'}
                         </span>
                         {/* Status label — fixed width centered in column */}
@@ -819,12 +819,12 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                           status?.stage === 'uploaded' && 'text-amber-600',
                           status?.stage === 'fulltext' && 'text-blue-600',
                           status?.stage === 'wiki' && 'text-green-600',
-                          !statusLabel && 'text-muted-foreground/30',
+                          !statusLabel && 'text-muted-foreground/50',
                         )}>
                           {statusLabel ?? '—'}
                         </span>
                         {/* Modified time — fixed width centered in column */}
-                        <span className="hidden sm:inline-flex items-center w-[110px] text-[11px] text-muted-foreground/50 font-mono tabular-nums truncate justify-self-center">
+                        <span className="hidden sm:inline-flex items-center w-[110px] text-[11px] text-muted-foreground/70 font-mono tabular-nums truncate justify-self-center">
                           {mtime ?? '—'}
                         </span>
                         {/* Actions */}

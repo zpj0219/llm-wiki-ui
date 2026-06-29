@@ -143,7 +143,7 @@ function FrontmatterCard({ fields }: { fields: Record<string, unknown> }) {
           }`}
         />
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Properties
+          属性
         </span>
         {collapsed && (
           <span className="text-[11px] text-muted-foreground/50 ml-auto tabular-nums">
