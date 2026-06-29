@@ -1,10 +1,10 @@
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CircleCheck, Clock, Download, File, FileCheck, Folder, Loader2, ListChecks, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, AlertCircle, CircleCheck, Clock, Download, File, FileCheck, Folder, Loader2, ListChecks, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-import { categoryLabel, cn, normPath } from '@/lib/utils';
+import { categoryLabel, cn, normPath, truncateMiddle } from '@/lib/utils';
 import { listWikiEntries, getOriginalsStatus, ensureDir, deleteWikiEntry, downloadWikiFile } from '@/services/wikiApi';
 import { uploadOriginalWithProgress } from '@/services/uploadApi';
 import {
@@ -17,14 +17,22 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { FilePreviewDialog } from './FilePreviewDialog';
-import { UploadListDialog, type UploadTask } from './UploadListDialog';
+import { type UploadTask } from './UploadListDialog';
 import type { OriginalsFileStatus, WikiFileEntry } from '@shared/types';
+
+function formatSize(bytes: number): string {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
 
 type WikiRawFilesPanelProps = {
   refreshKey?: number;
 };
 
 const RAW_SUBS = ['raw/originals', 'raw/fulltext', 'raw/inbox'];
+const UPLOAD_SECTION = 'upload-list';
 
 /** 并发上传上限 */
 const MAX_CONCURRENT = 3;
@@ -90,6 +98,171 @@ function FileStatusIcon({ status }: { status: OriginalsFileStatus['stage'] }) {
     return <FileCheck className="h-3.5 w-3.5 text-blue-500" />;
   }
   return <CircleCheck className="h-3.5 w-3.5 text-green-500" />;
+}
+
+function UploadListContent({
+  tasks,
+  onRetry,
+  onRetryAllFailed,
+  onClearFinished,
+}: {
+  tasks: UploadTask[];
+  onRetry: (id: string) => void;
+  onRetryAllFailed: () => void;
+  onClearFinished: () => void;
+}) {
+  const total = tasks.length;
+  const successCount = tasks.filter((t) => t.status === 'success').length;
+  const failedCount = tasks.filter((t) => t.status === 'failed').length;
+  const uploadingCount = tasks.filter((t) => t.status === 'uploading').length;
+  const queuedCount = tasks.filter((t) => t.status === 'queued').length;
+  const hasFinished = successCount > 0 || failedCount > 0;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Summary bar */}
+      <div className="shrink-0 flex items-center gap-3 flex-wrap text-xs px-4 py-2 border-b">
+        <div className="flex items-center gap-1.5">
+          <ListChecks className="h-4 w-4 text-primary/70" />
+          <span className="text-muted-foreground">
+            共 <span className="font-medium text-foreground tabular-nums">{total}</span> 个
+          </span>
+        </div>
+        {uploadingCount > 0 && (
+          <span className="flex items-center gap-1 text-primary">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            进行中 {uploadingCount}
+          </span>
+        )}
+        {queuedCount > 0 && (
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            排队 {queuedCount}
+          </span>
+        )}
+        {successCount > 0 && (
+          <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+            <CheckCircle2 className="h-3 w-3" />
+            成功 {successCount}
+          </span>
+        )}
+        {failedCount > 0 && (
+          <span className="flex items-center gap-1 text-destructive">
+            <AlertCircle className="h-3 w-3" />
+            失败 {failedCount}
+          </span>
+        )}
+        <div className="flex items-center gap-1 ml-auto">
+          {failedCount > 0 && (
+            <Button variant="outline" size="sm" onClick={onRetryAllFailed}>
+              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+              全部重试({failedCount})
+            </Button>
+          )}
+          {hasFinished && (
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onClearFinished}>
+              <Trash2 className="h-3 w-3 mr-1" />
+              清空已完成
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Task list */}
+      <div className="flex-1 min-h-0">
+        {total === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
+            <ListChecks className="h-10 w-10 text-muted-foreground/20" strokeWidth={1} />
+            <p className="text-sm text-muted-foreground">暂无上传任务</p>
+            <p className="text-xs text-muted-foreground/60">选择文件或拖放后会在此处显示</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-1.5">
+              {tasks.map((task) => (
+                <UploadTaskRow key={task.id} task={task} onRetry={onRetry} />
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UploadTaskRow({ task, onRetry }: { task: UploadTask; onRetry: (id: string) => void }) {
+  const { status, progress, displayName } = task;
+  const isFailed = status === 'failed';
+  const isUploading = status === 'uploading';
+  const isQueued = status === 'queued';
+
+  return (
+    <div
+      className={cn(
+        'rounded-lg border px-3 py-2 transition-colors',
+        isFailed
+          ? 'border-destructive/30 bg-destructive/5'
+          : isUploading
+            ? 'border-primary/30 bg-primary/5'
+            : 'border-border bg-card',
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span className="shrink-0">
+          {status === 'success' ? (
+            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+          ) : isFailed ? (
+            <AlertCircle className="h-4 w-4 text-destructive" />
+          ) : isUploading ? (
+            <Loader2 className="h-4 w-4 text-primary animate-spin" />
+          ) : (
+            <Clock className="h-4 w-4 text-muted-foreground/60" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs" title={displayName}>
+          {truncateMiddle(displayName, 40)}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted-foreground/60 font-mono tabular-nums">
+          {formatSize(progress.total || task.file.size)}
+        </span>
+        {isUploading && (
+          <span className="shrink-0 text-[11px] font-mono tabular-nums text-primary w-9 text-right">
+            {progress.percent}%
+          </span>
+        )}
+        {isFailed && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 h-6 px-2 text-[11px] text-destructive hover:text-destructive"
+            onClick={() => onRetry(task.id)}
+          >
+            <RotateCcw className="h-3 w-3 mr-1" />
+            重试
+          </Button>
+        )}
+      </div>
+      {isUploading && (
+        <div className="mt-1.5 h-1 w-full rounded-full bg-primary/15 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-150 ease-out"
+            style={{ width: `${progress.percent}%` }}
+          />
+        </div>
+      )}
+      {isFailed && task.error && (
+        <p className="mt-1 text-[11px] text-destructive/80 break-all line-clamp-2">{task.error}</p>
+      )}
+      {status === 'success' && task.relPath && (
+        <p className="mt-0.5 text-[11px] text-muted-foreground/50 font-mono truncate" title={task.relPath}>
+          → {task.relPath}
+        </p>
+      )}
+      {isQueued && (
+        <p className="mt-0.5 text-[11px] text-muted-foreground/50">等待上传…</p>
+      )}
+    </div>
+  );
 }
 
 type FileEntry = { file: File; relativePath?: string };
@@ -187,7 +360,6 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<UploadTask[]>([]);
-  const [listOpen, setListOpen] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -232,7 +404,9 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   // When switching sections, reset browse path to that section root
   const switchSection = useCallback((sub: string) => {
     setActiveSection(sub);
-    setBrowsePath(sub);
+    if (sub !== UPLOAD_SECTION) {
+      setBrowsePath(sub);
+    }
   }, []);
 
   const { dirs, files } = useMemo(
@@ -240,8 +414,9 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
     [allFiles, browsePath],
   );
 
-  const canGoUp = browsePath !== activeSection;
+  const canGoUp = browsePath !== activeSection && activeSection !== UPLOAD_SECTION;
   const isOriginals = activeSection === 'raw/originals';
+  const isUploadList = activeSection === UPLOAD_SECTION;
 
   const goUp = useCallback(() => {
     if (!canGoUp) return;
@@ -593,10 +768,10 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
           {error}
         </div>
       )}
-      {pendingCount > 0 && (
+      {pendingCount > 0 && !isUploadList && (
         <button
           type="button"
-          onClick={() => setListOpen(true)}
+          onClick={() => switchSection(UPLOAD_SECTION)}
           className="shrink-0 w-full px-4 py-2 bg-primary/5 text-primary text-xs border-b hover:bg-primary/10 transition-colors text-left"
         >
           <span className="flex items-center gap-2">
@@ -627,9 +802,29 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
               {categoryLabel(sub)}
             </button>
           ))}
+          <button
+            type="button"
+            className={cn(
+              'relative px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+              isUploadList
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-accent',
+            )}
+            onClick={() => switchSection(UPLOAD_SECTION)}
+          >
+            <span className="flex items-center gap-1.5">
+              上传列表
+              {pendingCount > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                  {pendingCount}
+                </span>
+              )}
+            </span>
+          </button>
         </div>
 
-        {/* Navigation bar */}
+        {/* Navigation bar — hidden on upload list */}
+        {!isUploadList && (
         <div className="flex items-center gap-2 pb-2">
           <button
             type="button"
@@ -678,28 +873,22 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                 <Folder className="h-3.5 w-3.5 mr-1.5" />
                 上传文件夹
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="relative"
-                onClick={() => setListOpen(true)}
-              >
-                <ListChecks className="h-3.5 w-3.5 mr-1.5" />
-                上传列表
-                {pendingCount > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-                    {pendingCount}
-                  </span>
-                )}
-              </Button>
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Content area */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {loading ? (
+        {isUploadList ? (
+          <UploadListContent
+            tasks={tasks}
+            onRetry={retryTask}
+            onRetryAllFailed={retryAllFailed}
+            onClearFinished={clearFinished}
+          />
+        ) : loading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
@@ -908,15 +1097,6 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
         open={previewPath !== null}
         relPath={previewPath}
         onOpenChange={(open) => { if (!open) setPreviewPath(null); }}
-      />
-
-      <UploadListDialog
-        open={listOpen}
-        onOpenChange={setListOpen}
-        tasks={tasks}
-        onRetry={retryTask}
-        onRetryAllFailed={retryAllFailed}
-        onClearFinished={clearFinished}
       />
 
       {/* Delete confirmation dialog */}
