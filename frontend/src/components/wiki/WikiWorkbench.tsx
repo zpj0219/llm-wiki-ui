@@ -377,7 +377,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                     {isWikiSelected && (
                       <TabsContent value="edit" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
                         <textarea
-                          className="block h-full w-full resize-none border-0 bg-background px-4 py-3 font-mono text-sm focus-visible:outline-none"
+                          className="block h-full w-full resize-none border-0 bg-background px-4 py-3 font-mono text-base sm:text-sm focus-visible:outline-none"
                           value={draft}
                           onChange={(e) => setDraft(e.target.value)}
                           spellCheck={false}

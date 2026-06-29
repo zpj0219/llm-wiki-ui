@@ -18,7 +18,7 @@ export function ChatMarkdown({ content, className, variant = 'default' }: ChatMa
   return (
     <div
       className={cn(
-        'prose-chat',
+        'prose-chat min-w-0',
         variant === 'user' && 'prose-chat-user',
         className
       )}

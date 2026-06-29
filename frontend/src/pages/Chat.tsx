@@ -654,8 +654,8 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
           </div>
         )}
 
-        <ScrollArea className="flex-1 min-h-0 [&>[data-radix-scroll-area-viewport]]:!h-full">
-          <div className="w-full px-4 py-6 space-y-6">
+        <ScrollArea className="flex-1 min-h-0 w-full max-w-full [&>[data-radix-scroll-area-viewport]]:!h-full [&>[data-radix-scroll-area-viewport]]:!w-full [&>[data-radix-scroll-area-viewport]]:max-w-full">
+          <div className="w-full max-w-full overflow-x-hidden px-3 py-4 sm:px-4 sm:py-6 space-y-4 sm:space-y-6" style={{ maxWidth: '100%', overflowX: 'hidden' }}>
             {loading && !messages.length ? (
               <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-2">
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -688,12 +688,12 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                 <div
                   key={message.id}
                   className={cn(
-                    'flex gap-3',
+                    'flex gap-2 sm:gap-3 min-w-0',
                     message.role === 'user' ? 'justify-end' : 'justify-start'
                   )}
                 >
                   {message.role === 'assistant' && (
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mt-0.5">
+                    <div className="flex size-7 sm:size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mt-0.5">
                       {isStreamingReply ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
@@ -703,7 +703,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                   )}
                   <div
                     className={cn(
-                      'max-w-[85%] rounded-xl px-4 py-3 text-sm',
+                      'max-w-[92%] sm:max-w-[85%] min-w-0 relative overflow-x-hidden rounded-xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm',
                       message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted/60 border border-border'
@@ -746,7 +746,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
         </ScrollArea>
 
         {/* 输入区 */}
-        <div className="shrink-0 px-4 pb-4 pt-3 bg-gradient-to-t from-muted/30 via-background/80 to-transparent">
+        <div className="shrink-0 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3 bg-gradient-to-t from-muted/30 via-background/80 to-transparent">
           <div className="w-full">
             <div
               className={cn(
@@ -767,10 +767,10 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                 placeholder={chatReady ? '输入消息…' : '请先配置 Hermes Gateway…'}
                 disabled={sending || !chatReady}
                 rows={1}
-                className="min-h-[52px] max-h-[200px] resize-none overflow-y-auto border-0 bg-transparent px-4 pt-3.5 pb-[52px] text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
+                className="min-h-[48px] sm:min-h-[52px] max-h-[200px] resize-none overflow-y-auto border-0 bg-transparent px-3 pt-2.5 pb-[46px] sm:px-4 sm:pt-3.5 sm:pb-[52px] text-base sm:text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
               />
 
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 px-3 pb-3 pt-6 bg-gradient-to-t from-card via-card/95 to-transparent rounded-b-2xl">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 sm:gap-3 px-2 pb-2 pt-4 sm:px-3 sm:pb-3 sm:pt-6 bg-gradient-to-t from-card via-card/95 to-transparent rounded-b-2xl">
                 <p className="pointer-events-auto hidden sm:flex items-center gap-2 text-[11px] text-muted-foreground select-none">
                   <span className="inline-flex items-center gap-1">
                     <kbd className="rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] leading-none">
