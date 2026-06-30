@@ -464,6 +464,10 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
 
       if (res.success) {
         updateTask(task.id, { status: 'success', relPath: res.relPath, error: undefined });
+      } else if (res.reason === 'duplicate') {
+        const dupPath = res.existingPath ?? '未知路径';
+        const dupDisplay = dupPath.startsWith('raw/originals/') ? dupPath.slice('raw/originals/'.length) : dupPath;
+        updateTask(task.id, { status: 'failed', error: `文件重复 — 已存在于 ${dupDisplay}` });
       } else {
         updateTask(task.id, { status: 'failed', error: res.error ?? '上传失败' });
       }

@@ -33,6 +33,8 @@ export type WikiStats = {
   topics: number;
   fulltextMd?: number;
   originalsPending?: number;
+  originalsPendingPaths?: string[];
+  duplicateGroups?: { md5: string; paths: string[] }[];
 };
 
 export type ChatRole = 'user' | 'assistant';

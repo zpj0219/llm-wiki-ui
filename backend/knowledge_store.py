@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -123,8 +126,16 @@ def delete_entry(rel_path: str) -> None:
 
     if path.is_dir():
         shutil.rmtree(path)
+        # 清理 manifest 中该目录下的所有记录
+        db = _manifest_db()
+        db.execute(
+            "DELETE FROM uploads WHERE rel_path = ? OR rel_path LIKE ?",
+            (rel, rel + "/%"),
+        )
+        db.commit()
     else:
         path.unlink()
+        _manifest_remove(rel)
 
 
 def list_entries() -> list[dict[str, Any]]:
@@ -182,6 +193,73 @@ def get_stats() -> dict[str, int]:
     sources = [p for p in all_files if p.startswith("wiki/sources/") and p.endswith(".md")]
     entities = [p for p in all_files if p.startswith("wiki/entities/") and p.endswith(".md")]
     topics = [p for p in all_files if p.startswith("wiki/topics/") and p.endswith(".md")]
+    # 利用上传清单的 MD5 来判断原始文件是否已有全文
+    ORIGINALS_PFX = "raw/originals/"
+    FULLTEXT_PFX = "raw/fulltext/"
+    fulltext_stems: set[str] = set()           # 全路径 stem
+    fulltext_name_stems: set[str] = set()      # 仅文件名 stem（兜底跨目录匹配）
+    for p in fulltext_md:
+        rel = p[len(FULLTEXT_PFX):]
+        stem, _ = os.path.splitext(rel)
+        fulltext_stems.add(stem)
+        fulltext_name_stems.add(os.path.basename(stem))
+
+    # 加载 manifest 中所有 originals 的 {relPath: md5}
+    manifest_md5s = _manifest_all_originals()
+    # 标记每个 md5 是否有至少一个文件已生成全文
+    md5_has_fulltext: dict[str, bool] = {}
+    for p in originals:
+        rel = p[len(ORIGINALS_PFX):]
+        stem, _ = os.path.splitext(rel)
+        md5 = manifest_md5s.get(p, "")
+        if not md5:
+            # manifest 中没有该文件（外部直接放入）→ 现场补录
+            try:
+                fpath = resolve_rel(".") / p
+                h = hashlib.md5(fpath.read_bytes()).hexdigest()
+                md5 = h
+                _manifest_set_md5(p, h, fpath.stat().st_size, int(fpath.stat().st_mtime))
+                manifest_md5s[p] = h
+            except (OSError, IOError):
+                md5 = ""
+        if not md5:
+            continue
+        if stem in fulltext_stems or os.path.basename(stem) in fulltext_name_stems:
+            md5_has_fulltext[md5] = True
+
+    # 统计 pending：三层匹配
+    # ① 全路径 stem 精确匹配 ② MD5 内容去重 ③ 仅文件名匹配（跨目录）
+    pending = 0
+    pending_paths: list[str] = []
+    for p in originals:
+        rel = p[len(ORIGINALS_PFX):]
+        stem, _ = os.path.splitext(rel)
+        # ① 全路径匹配
+        if stem in fulltext_stems:
+            continue
+        # ② MD5 去重
+        md5 = manifest_md5s.get(p, "")
+        if md5 and md5_has_fulltext.get(md5):
+            continue
+        # ③ 仅文件名匹配（同一文件上传到不同子目录的情况）
+        name_stem = os.path.basename(stem)
+        if name_stem in fulltext_name_stems:
+            continue
+        pending += 1
+        pending_paths.append(p)
+
+    # 检测重复文件：MD5 相同但路径不同的文件组（排除空 MD5）
+    db = _manifest_db()
+    dup_rows = db.execute(
+        "SELECT md5, GROUP_CONCAT(rel_path, '\n') FROM uploads"
+        " WHERE rel_path LIKE 'raw/originals/%' AND md5 != ''"
+        " GROUP BY md5 HAVING COUNT(*) > 1"
+    ).fetchall()
+    duplicate_groups: list[dict[str, Any]] = []
+    for md5, paths_str in dup_rows:
+        paths = [p for p in paths_str.split("\n") if p]
+        duplicate_groups.append({"md5": md5, "paths": paths})
+
     return {
         "rawFiles": len(originals),
         "wikiFlatMd": len(wiki_flat),
@@ -189,7 +267,9 @@ def get_stats() -> dict[str, int]:
         "entities": len(entities),
         "topics": len(topics),
         "fulltextMd": len(fulltext_md),
-        "originalsPending": len(originals),
+        "originalsPending": pending,
+        "originalsPendingPaths": pending_paths,
+        "duplicateGroups": duplicate_groups,
     }
 
 
@@ -212,6 +292,165 @@ def list_originals_directories() -> list[dict[str, Any]]:
     return dirs
 
 
+# ── 上传清单 SQLite（MD5 去重） ────────────────────────────────────────
+
+_DB_INITED = False
+
+
+def _manifest_db() -> sqlite3.Connection:
+    """每次调用新建连接，避免线程安全问题。"""
+    global _DB_INITED
+    db_path = resolve_rel(".upload_manifest.db")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=2000")
+    if not _DB_INITED:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS uploads ("
+            "  rel_path TEXT PRIMARY KEY,"
+            "  md5 TEXT NOT NULL CHECK(md5 != ''),"
+            "  size INTEGER NOT NULL DEFAULT 0,"
+            "  uploaded_at INTEGER NOT NULL DEFAULT 0"
+            ")"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_uploads_md5 ON uploads(md5)"
+        )
+        conn.execute("DELETE FROM uploads WHERE md5 = ''")
+        conn.commit()
+        _DB_INITED = True
+    return conn
+
+
+def _manifest_migrate_from_json() -> int:
+    """将旧的 .upload_manifest.json 迁移到 SQLite。返回迁移条目数。"""
+    json_path = resolve_rel(".upload_manifest.json")
+    if not json_path.exists():
+        return 0
+    try:
+        import json
+        old = json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+    if not isinstance(old, dict) or not old:
+        return 0
+    db = _manifest_db()
+    count = 0
+    for rel_path, entry in old.items():
+        try:
+            db.execute(
+                "INSERT OR IGNORE INTO uploads(rel_path, md5, size, uploaded_at) VALUES(?,?,?,?)",
+                (rel_path, entry.get("md5", ""), entry.get("size", 0), entry.get("uploadedAt", 0)),
+            )
+            count += 1
+        except sqlite3.Error:
+            pass
+    db.commit()
+    # 迁移后重命名旧文件备份
+    json_path.rename(json_path.with_suffix(".json.bak"))
+    return count
+
+
+def _manifest_add(rel_path: str, data: bytes) -> str:
+    """记录一次上传，返回 md5。"""
+    db = _manifest_db()
+    _manifest_migrate_from_json()
+    h = hashlib.md5(data).hexdigest()
+    db.execute(
+        "INSERT OR REPLACE INTO uploads(rel_path, md5, size, uploaded_at) VALUES(?,?,?,?)",
+        (rel_path, h, len(data), int(time.time())),
+    )
+    db.commit()
+    return h
+
+
+def _manifest_remove(rel_path: str) -> None:
+    db = _manifest_db()
+    _manifest_migrate_from_json()
+    db.execute("DELETE FROM uploads WHERE rel_path = ?", (rel_path,))
+    db.commit()
+
+
+def _manifest_has_md5(md5: str) -> str | None:
+    """检查 md5 是否已在清单中。返回已有文件的 relPath，或 None。"""
+    db = _manifest_db()
+    _manifest_migrate_from_json()
+    row = db.execute(
+        "SELECT rel_path FROM uploads WHERE md5 = ? LIMIT 1", (md5,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _manifest_get_md5(rel_path: str) -> str:
+    """获取指定路径文件的 md5，不存在则返回空字符串。"""
+    db = _manifest_db()
+    row = db.execute(
+        "SELECT md5 FROM uploads WHERE rel_path = ?", (rel_path,)
+    ).fetchone()
+    return row[0] if row else ""
+
+
+def _manifest_set_md5(rel_path: str, md5: str, size: int, uploaded_at: int) -> None:
+    """补录一条记录（用于外部文件 fallback）。"""
+    db = _manifest_db()
+    db.execute(
+        "INSERT OR IGNORE INTO uploads(rel_path, md5, size, uploaded_at) VALUES(?,?,?,?)",
+        (rel_path, md5, size, uploaded_at),
+    )
+    db.commit()
+
+
+def _manifest_all_originals() -> dict[str, str]:
+    """返回 {relPath: md5}（仅限在 originals 下的记录）。"""
+    db = _manifest_db()
+    _manifest_migrate_from_json()
+    rows = db.execute(
+        "SELECT rel_path, md5 FROM uploads WHERE rel_path LIKE 'raw/originals/%'"
+    ).fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
+def _migrate_manifest() -> int:
+    """扫描 raw/originals/ 下已有文件，补录到 manifest 中。返回新增数量。"""
+    db = _manifest_db()
+    _manifest_migrate_from_json()
+    existing = set(
+        row[0] for row in db.execute(
+            "SELECT rel_path FROM uploads WHERE rel_path LIKE 'raw/originals/%'"
+        ).fetchall()
+    )
+    added = 0
+    base = resolve_rel(".")
+    for p in _iter_files():
+        if not p.startswith("raw/originals/") or p.endswith("/"):
+            continue
+        if p in existing:
+            continue
+        try:
+            fpath = base / p
+            content = fpath.read_bytes()
+            h = hashlib.md5(content).hexdigest()
+            db.execute(
+                "INSERT OR IGNORE INTO uploads(rel_path, md5, size, uploaded_at) VALUES(?,?,?,?)",
+                (p, h, len(content), int(fpath.stat().st_mtime)),
+            )
+            added += 1
+        except (OSError, IOError):
+            pass
+    if added > 0:
+        db.commit()
+    return added
+
+
+class DuplicateFileError(ValueError):
+    """文件内容重复异常"""
+    def __init__(self, md5: str, existing_path: str):
+        self.md5 = md5
+        self.existing_path = existing_path
+        super().__init__(f"文件内容重复，已存在于 {existing_path}")
+
+
 def save_original(
     filename: str,
     data: bytes,
@@ -229,6 +468,12 @@ def save_original(
 
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise ValueError(f"不支持的文件类型: {ext}")
+
+    # MD5 去重：检查是否已有相同内容的文件
+    md5 = hashlib.md5(data).hexdigest()
+    existing = _manifest_has_md5(md5)
+    if existing:
+        raise DuplicateFileError(md5, existing)
 
     if to_inbox:
         rel = f"raw/inbox/{safe_name}"
@@ -253,6 +498,7 @@ def save_original(
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
+    _manifest_add(rel, data)
     return rel
 
 

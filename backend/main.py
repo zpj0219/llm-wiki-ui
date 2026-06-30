@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import DATABASE_PATH, HERMES_GATEWAY_URL, KNOWLEDGE_BASE_ROOT, USE_HERMES_CHAT
 from database import init_db
-from knowledge_store import ensure_kb_root
+from knowledge_store import ensure_kb_root, _migrate_manifest
 from routers.auth import router as auth_router
 from routers.chat import router as chat_router
 from routers.upload import router as upload_router
@@ -13,6 +13,7 @@ from routers.wiki import router as wiki_router
 
 ensure_kb_root()
 init_db()
+_migrate_manifest()  # 启动时一次性扫描文件并计算 MD5
 
 app = FastAPI(
     title="Hermes Agent 前端 API",

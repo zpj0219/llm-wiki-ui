@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from knowledge_store import (
     ORIGINALS_PREFIX,
+    DuplicateFileError,
     ensure_kb_root,
     kb_root,
     list_originals_directories,
@@ -63,6 +64,13 @@ async def upload_original(
             target_dir=target_dir,
             to_inbox=to_inbox,
         )
+    except DuplicateFileError as e:
+        return {
+            "success": False,
+            "reason": "duplicate",
+            "message": f"文件内容重复，已存在于 {e.existing_path}",
+            "existingPath": e.existing_path,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

@@ -249,7 +249,7 @@ function TaskRow({
       {/* Success path */}
       {status === 'success' && task.relPath && (
         <p className="mt-0.5 text-[11px] text-muted-foreground/50 font-mono truncate" title={task.relPath}>
-          → {task.relPath}
+          → {task.relPath.startsWith('raw/originals/') ? task.relPath.slice('raw/originals/'.length) : task.relPath}
         </p>
       )}
 

@@ -80,10 +80,19 @@ export async function getUploadConfig(): Promise<{
   };
 }
 
+export type UploadResult = {
+  success: boolean;
+  relPath?: string;
+  message?: string;
+  error?: string;
+  reason?: 'duplicate';
+  existingPath?: string;
+};
+
 export async function uploadOriginal(
   file: File,
   options: { targetDir: string; toInbox?: boolean }
-): Promise<{ success: boolean; relPath?: string; message?: string; error?: string }> {
+): Promise<UploadResult> {
   const form = new FormData();
   form.append('file', file);
   form.append('target_dir', options.targetDir);
@@ -101,6 +110,9 @@ export async function uploadOriginal(
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.detail ?? data.message ?? `HTTP ${res.status}`);
+    }
+    if (data.success === false && data.reason === 'duplicate') {
+      return { success: false, reason: 'duplicate', message: data.message, existingPath: data.existingPath };
     }
     return {
       success: true,
@@ -123,7 +135,7 @@ export function uploadOriginalWithProgress(
   file: File,
   options: { targetDir: string; toInbox?: boolean },
   onProgress?: (progress: UploadProgress) => void,
-): Promise<{ success: boolean; relPath?: string; message?: string; error?: string }> {
+): Promise<UploadResult> {
   return new Promise((resolve) => {
     const form = new FormData();
     form.append('file', file);
@@ -154,11 +166,15 @@ export function uploadOriginalWithProgress(
       try {
         const data = JSON.parse(xhr.responseText || '{}');
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({
-            success: true,
-            relPath: data.relPath,
-            message: data.message,
-          });
+          if (data.success === false && data.reason === 'duplicate') {
+            resolve({ success: false, reason: 'duplicate', message: data.message, existingPath: data.existingPath });
+          } else {
+            resolve({
+              success: true,
+              relPath: data.relPath,
+              message: data.message,
+            });
+          }
         } else {
           resolve({
             success: false,
