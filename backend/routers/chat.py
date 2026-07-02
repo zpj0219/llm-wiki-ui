@@ -17,7 +17,7 @@ from chat_service import (
     get_session,
     list_sessions,
     send_message,
-    stream_message,
+    stream_message_async,
     update_session_model,
 )
 from config import DEFAULT_CHAT_MODEL, HERMES_GATEWAY_URL
@@ -159,7 +159,7 @@ async def api_send_message_stream(
         return cancel_state["v"]
 
     try:
-        events = stream_message(
+        events = stream_message_async(
             user_id, session_id, body.content, is_cancelled=is_cancelled
         )
     except HermesError as e:
@@ -172,7 +172,7 @@ async def api_send_message_stream(
 
     async def generate():
         try:
-            for event in events:
+            async for event in events:
                 if await request.is_disconnected():
                     cancel_state["v"] = True
                     break
@@ -181,7 +181,7 @@ async def api_send_message_stream(
                 yield "data: [DONE]\n\n"
         finally:
             if cancel_state["v"]:
-                events.close()
+                await events.aclose()
 
     return StreamingResponse(
         generate(),

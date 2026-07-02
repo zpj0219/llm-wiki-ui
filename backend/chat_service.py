@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterator
+from typing import Any, AsyncIterator, Callable, Iterator
 
 from chat_store import (
     append_messages,
@@ -20,6 +20,7 @@ from hermes_client import (
     HermesError,
     chat_completions,
     chat_completions_stream,
+    chat_completions_stream_async,
     delete_session as hermes_delete,
     hermes_enabled,
     list_models,
@@ -250,6 +251,95 @@ def stream_message(
         except GeneratorExit:
             _save_once(stopped=True)
             raise
+
+    return _iter()
+
+
+async def stream_message_async(
+    user_id: str,
+    session_id: str,
+    content: str,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> AsyncIterator[dict[str, Any]] | None:
+    """异步版流式对话，不阻塞线程池。"""
+    _require_hermes()
+    session = store_get(user_id, session_id)
+    if not session:
+        return None
+
+    text = content.strip()
+    if not text:
+        raise ValueError("消息内容不能为空")
+
+    now = _now_iso()
+    user_msg = {"id": str(uuid.uuid4()), "role": "user", "content": text, "timestamp": now}
+    model = session.get("modelId") or DEFAULT_CHAT_MODEL
+    api_messages = _build_api_messages(session, text)
+
+    async def _iter() -> AsyncIterator[dict[str, Any]]:
+        parts: list[str] = []
+        saved = False
+
+        def _persist(parts: list[str], *, stopped: bool) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+            full = "".join(parts) if parts else ("（已停止生成）" if stopped else "（无回复内容）")
+            assistant_msg = {
+                "id": str(uuid.uuid4()),
+                "role": "assistant",
+                "content": full,
+                "timestamp": _now_iso(),
+            }
+            updated = append_messages(
+                user_id, session_id, user_msg, assistant_msg, rename_from_messages=True,
+            )
+            return updated, assistant_msg
+
+        def _save_once(*, stopped: bool) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+            nonlocal saved
+            if saved:
+                return None, None
+            saved = True
+            return _persist(parts, stopped=stopped)
+
+        yield {"type": "started", "userMessage": user_msg}
+        yield {
+            "type": "step",
+            "step": {
+                "id": "__hermes_init__",
+                "label": "Hermes Agent 正在分析问题…",
+                "status": "running",
+            },
+        }
+
+        try:
+            async for chunk in chat_completions_stream_async(
+                api_messages, model, session_key=_session_key(user_id)
+            ):
+                if is_cancelled and is_cancelled():
+                    break
+                if chunk.get("type") == "delta":
+                    delta = str(chunk.get("delta") or "")
+                    if delta:
+                        parts.append(delta)
+                        yield {"type": "delta", "delta": delta}
+                elif chunk.get("type") == "step":
+                    step = chunk.get("step")
+                    if isinstance(step, dict):
+                        yield {"type": "step", "step": step}
+        except HermesError as e:
+            yield {"type": "error", "message": str(e)}
+            return
+
+        stopped = bool(is_cancelled and is_cancelled())
+        updated, assistant_msg = _save_once(stopped=stopped)
+        if not updated or not assistant_msg:
+            yield {"type": "error", "message": "会话保存失败"}
+            return
+        yield {
+            "type": "stopped" if stopped else "done",
+            "session": _serialize(updated),
+            "assistantMessage": assistant_msg,
+        }
 
     return _iter()
 

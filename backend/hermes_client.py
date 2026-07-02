@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Iterator, Literal
+from typing import Any, AsyncIterator, Iterator, Literal
 
 import httpx
 
@@ -144,6 +144,48 @@ def chat_completions_stream(
                 raise HermesError(f"Hermes 流式错误 ({resp.status_code}): {resp.read().decode()[:300]}")
             sse_event = ""
             for line in resp.iter_lines():
+                if not line:
+                    sse_event = ""
+                    continue
+                if line.startswith("event:"):
+                    sse_event = line[6:].strip()
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if payload == "[DONE]":
+                    break
+                try:
+                    event = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                for out in _parse_stream_events(event, sse_event):
+                    yield out
+                sse_event = ""
+
+
+async def chat_completions_stream_async(
+    messages: list[dict[str, str]],
+    model: str,
+    *,
+    session_key: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """异步版：POST /v1/chat/completions stream=true，不阻塞线程池"""
+    url = f"{HERMES_GATEWAY_URL}/v1/chat/completions"
+    headers = _headers(_session_key_header(session_key))
+
+    async with httpx.AsyncClient(trust_env=False, timeout=None) as client:
+        async with client.stream(
+            "POST", url, headers=headers,
+            json={"model": model, "messages": messages, "stream": True},
+        ) as resp:
+            if resp.status_code >= 400:
+                body = await resp.aread()
+                raise HermesError(f"Hermes 流式错误 ({resp.status_code}): {body.decode()[:300]}")
+            sse_event = ""
+            async for line in resp.aiter_lines():
                 if not line:
                     sse_event = ""
                     continue
