@@ -37,7 +37,8 @@ backend/
 
 与 Hermes Gateway 通信的唯一通道：
 - **chat_completions()** — 非流式对话（`POST /v1/chat/completions` stream=false）
-- **chat_completions_stream()** — SSE 流式对话（解析 `data:` 行，处理 delta/step 事件）
+- **chat_completions_stream()** — SSE 流式对话（同步版，供 CLI/脚本使用）
+- **chat_completions_stream_async()** — SSE 流式对话（异步版，供 FastAPI 端点使用）
 - **list_models()** — 获取可用模型列表
 - **health_check()** — 网关健康探测
 
@@ -52,12 +53,57 @@ backend/
 - Session 绑定 `X-Hermes-Session-Key` 头以实现 Hermes 侧会话连续性
 - 自动从首条消息提取会话标题（截取前 20 字符）
 
-**流式对话**（`stream_message`）：
-1. 构建 API 消息历史 → POST `/v1/chat/completions` stream=true
-2. 逐条解析 SSE chunk → 按类型分发到前端
-3. 流结束时持久化完整消息到 SQLite
+**流式对话**：
+- `stream_message()` — 同步版，使用 `httpx.Client.stream()` + `resp.iter_lines()`
+- `stream_message_async()` — 异步版，使用 `httpx.AsyncClient.stream()` + `resp.aiter_lines()`
 
 **审批支持**：当 Hermes 回复包含"批准/确认/授权"等关键词时，前端显示 `/approve once` `/approve deny` 快捷按钮。点击后以文本消息形式发送斜杠命令，由 Hermes 内部解析执行。
+
+#### 异步流式架构（修复对话阻塞问题）
+
+**问题根因**：早期 `routers/chat.py` 的 SSE 端点 `async def generate()` 由 Starlette 直接在**事件循环线程**中调用 `__anext__()` 执行。但内部使用了 `for event in sync_iterator`（没有 `await`），最终阻塞在 `httpx.Client.stream().iter_lines()` → `socket.recv()` 上等 Gateway 响应。uvicorn 单 worker 只有一个事件循环线程，一旦阻塞，**所有异步请求失去调度者，全部卡死**——即使线程池还空闲 39 个线程也没有任何作用，因为没有人去调度它们。
+
+```
+StreamingResponse(async def generate())
+    │  Starlette 在事件循环线程里调用 __anext__()
+    ▼
+for event in sync_iterator   ← 没有 await！阻塞 __next__()
+    │
+    ▼
+httpx.Client.stream().recv() ← 阻塞等 Gateway
+    │
+    ▼
+事件循环线程死掉 → 全站阻塞 ❌
+```
+
+**修复方式**：三处 `for` → `async for`（commit `96fa0cc`）：
+
+| 层 | 文件 | 改动 |
+|---|------|------|
+| 客户端 | `hermes_client.py` | 新增 `chat_completions_stream_async()`，`httpx.AsyncClient` + `aiter_lines()` |
+| 服务 | `chat_service.py` | 新增 `stream_message_async()`，返回 `AsyncIterator` |
+| 路由 | `routers/chat.py` | `stream_message` → `stream_message_async`，`for` → `async for` |
+
+每次 `async for` 迭代都是 `await`，控制权归还事件循环，其他请求得以正常调度：
+
+```
+StreamingResponse(async def generate())
+    │
+    ▼
+async for event in async_iterator   ← await！
+    │  每轮迭代 await，事件循环空闲
+    ▼
+httpx.AsyncClient.arecv()  ← 异步 await，不阻塞
+    │
+    ▼
+事件循环自由 → 其他请求正常处理 ✅
+```
+
+**停止 vs 断连的区分**：
+- 用户点击停止 → `_session_stop_flags` 内存标记 → 立即中断，保存已收到内容
+- 浏览器刷新断开 → `request.is_disconnected()` → 先保存已有内容，`asyncio.create_task` 后台继续收完整回复，最后 `update_last_message()` 补写 DB
+
+同步版 `stream_message()` 保留不删，供非 FastAPI 场景（CLI 脚本、定时任务）使用。
 
 ### chat_store.py — 对话持久层
 

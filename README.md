@@ -122,7 +122,7 @@ npm run dev   # http://localhost:5173
 
 ```
 llm-wiki-ui/
-├── backend/
+├── backend/                  # FastAPI BFF，详见 [backend/README.md](backend/README.md)
 │   ├── config.py           # 知识库路径、Hermes Gateway、SQLite
 │   ├── database.py         # SQLite 初始化与连接
 │   ├── auth_store.py       # 用户认证与 Token

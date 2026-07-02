@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable, Iterator
 
@@ -13,6 +14,7 @@ from chat_store import (
     delete_session as store_delete,
     get_session as store_get,
     list_sessions as store_list,
+    update_last_message,
     update_session_model as store_update_model,
 )
 from config import DEFAULT_CHAT_MODEL, USE_HERMES_CHAT
@@ -63,6 +65,21 @@ def _build_api_messages(session: dict[str, Any], user_text: str) -> list[dict[st
             messages.append({"role": str(role), "content": content})
     messages.append({"role": "user", "content": user_text})
     return messages
+
+
+# ── 停止标记（前端点击停止 vs 刷新断开） ────────────────────────────
+
+_session_stop_flags: dict[str, bool] = {}
+_active_background_tasks: dict[str, bool] = {}
+
+
+def stop_session(session_id: str) -> None:
+    """标记会话需要中断。由 /stop 端点调用。"""
+    _session_stop_flags[session_id] = True
+
+
+def _is_stopped(session_id: str) -> bool:
+    return _session_stop_flags.pop(session_id, False)
 
 
 def get_available_models() -> list[dict[str, str]]:
@@ -317,6 +334,11 @@ async def stream_message_async(
             ):
                 if is_cancelled and is_cancelled():
                     break
+                if _is_stopped(session_id):
+                    # 用户点击停止 → 真正中断
+                    yield {"type": "stopped", "session": _serialize(session), "assistantMessage": {"id": "", "role": "assistant", "content": "（已停止）", "timestamp": _now_iso()}}
+                    _save_once(stopped=True)
+                    return
                 if chunk.get("type") == "delta":
                     delta = str(chunk.get("delta") or "")
                     if delta:
@@ -329,17 +351,45 @@ async def stream_message_async(
         except HermesError as e:
             yield {"type": "error", "message": str(e)}
             return
+        finally:
+            # 无论什么原因断开，先保存已有内容
+            stopped = bool(is_cancelled and is_cancelled()) or _is_stopped(session_id)
+            if stopped:
+                _save_once(stopped=True)
+                # 用户点击停止 → 不续收
+                pass
+            elif not saved and parts:
+                # 刷新断开 → 先保存已有内容，再后台续收
+                _save_once(stopped=False)
+                _active_background_tasks[session_id] = True
+                async def _background_continue():
+                    try:
+                        async for chunk in chat_completions_stream_async(
+                            api_messages, model, session_key=_session_key(user_id)
+                        ):
+                            if chunk.get("type") == "delta":
+                                delta = str(chunk.get("delta") or "")
+                                if delta:
+                                    parts.append(delta)
+                    except Exception:
+                        pass
+                    finally:
+                        _active_background_tasks.pop(session_id, None)
+                        if parts:
+                            update_last_message(session_id, "".join(parts), user_id)
+                asyncio.create_task(_background_continue())
 
-        stopped = bool(is_cancelled and is_cancelled())
-        updated, assistant_msg = _save_once(stopped=stopped)
-        if not updated or not assistant_msg:
+        if not saved:
+            stopped = bool(is_cancelled and is_cancelled()) or _is_stopped(session_id)
+            updated, assistant_msg = _save_once(stopped=stopped)
+            if updated and assistant_msg and not _active_background_tasks.get(session_id):
+                yield {
+                    "type": "stopped" if stopped else "done",
+                    "session": _serialize(updated),
+                    "assistantMessage": assistant_msg,
+                }
+        else:
             yield {"type": "error", "message": "会话保存失败"}
-            return
-        yield {
-            "type": "stopped" if stopped else "done",
-            "session": _serialize(updated),
-            "assistantMessage": assistant_msg,
-        }
 
     return _iter()
 

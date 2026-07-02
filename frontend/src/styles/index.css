@@ -89,20 +89,32 @@
   @apply shadow-sm ring-1 ring-border/60;
 }
 
-[data-sidebar] {
+/* 全局滚动条样式 — 与 shadcn ScrollArea 风格一致 */
+* {
   scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
 }
 
-[data-sidebar] *::-webkit-scrollbar {
+*::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
-[data-sidebar] *::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-border;
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-[data-sidebar] *::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/40;
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .prose-wiki {

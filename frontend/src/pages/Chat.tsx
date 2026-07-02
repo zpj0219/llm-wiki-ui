@@ -29,6 +29,8 @@ import {
   streamChatMessage,
   updateChatSessionModel,
 } from '@/services/chatApi';
+import { getAuthHeaders } from '@/services/authSession';
+import { API_BASE } from '@/services/api';
 import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary, ChatStep } from '@shared/types';
 import { useChatHeaderExtras } from '@/contexts/ChatHeaderExtras';
 
@@ -146,8 +148,15 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   }, []);
 
   const handleStop = useCallback(() => {
+    // 通知后端这是主动停止，不是刷新断开
+    if (currentSessionId) {
+      fetch(`${API_BASE}/api/chat/sessions/${encodeURIComponent(currentSessionId)}/stop`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      }).catch(() => {});
+    }
     abortRef.current?.abort();
-  }, []);
+  }, [currentSessionId]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

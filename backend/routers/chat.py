@@ -17,6 +17,7 @@ from chat_service import (
     get_session,
     list_sessions,
     send_message,
+    stop_session,
     stream_message_async,
     update_session_model,
 )
@@ -159,7 +160,7 @@ async def api_send_message_stream(
         return cancel_state["v"]
 
     try:
-        events = stream_message_async(
+        events = await stream_message_async(
             user_id, session_id, body.content, is_cancelled=is_cancelled
         )
     except HermesError as e:
@@ -188,3 +189,10 @@ async def api_send_message_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/sessions/{session_id}/stop")
+def api_stop_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    """标记会话需要中断——区别于刷新断开。"""
+    stop_session(session_id)
+    return {"success": True}

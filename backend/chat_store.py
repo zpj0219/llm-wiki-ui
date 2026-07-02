@@ -231,3 +231,26 @@ def append_messages(
         ).fetchone()
         messages = _load_messages(conn, session_id)
     return _serialize_session(row, messages)
+
+
+def update_last_message(session_id: str, content: str, user_id: str) -> None:
+    """更新会话最后一条 assistant 消息的内容。用于后台续收补写。"""
+    conn = get_connection()
+    row = conn.execute(
+        """
+        SELECT id FROM chat_messages
+        WHERE session_id = ? AND role = 'assistant'
+        ORDER BY timestamp DESC LIMIT 1
+        """,
+        (session_id,),
+    ).fetchone()
+    if row:
+        conn.execute(
+            "UPDATE chat_messages SET content = ? WHERE id = ?",
+            (content, row["id"]),
+        )
+        conn.execute(
+            "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
+            (_now_iso(), session_id),
+        )
+        conn.commit()
