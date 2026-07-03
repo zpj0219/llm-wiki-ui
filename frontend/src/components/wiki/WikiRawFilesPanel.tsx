@@ -939,7 +939,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                         onDragLeave={isOriginals ? (e) => handleFolderDragLeave(e, dir.relPath) : undefined}
                         onDragOver={isOriginals ? handleDragOver : undefined}
                         onDrop={isOriginals ? (e) => handleFolderDrop(e, dir.relPath) : undefined}
-                        title={`双击打开 ${dirName}`}
+                        title={`点击打开 ${dirName}`}
                       >
                         <Folder className="h-10 w-10 text-amber-500/80" strokeWidth={1.25} />
                         <span className="text-xs truncate min-w-0">{dirName}</span>

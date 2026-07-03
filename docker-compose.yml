@@ -11,7 +11,7 @@ services:
       KNOWLEDGE_BASE_ROOT: /data/knowledge-base
       DATABASE_PATH: /var/lib/hermes-ui/app.db
       HERMES_GATEWAY_URL: ${HERMES_GATEWAY_URL:-http://host.docker.internal:8642}
-      HERMES_API_KEY: ${HERMES_API_KEY:-}
+      HERMES_API_KEY: ${HERMES_API_KEY:-2222-2222-2222-2222}
       USE_HERMES_CHAT: ${USE_HERMES_CHAT:-auto}
     volumes:
       # 与 hermes-data 共享知识库卷（原件 / fulltext / wiki）

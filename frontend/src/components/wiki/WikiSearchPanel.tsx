@@ -11,7 +11,7 @@ type WikiSearchPanelProps = {
 };
 
 const CATEGORIES: {
-  key: keyof WikiStats;
+  key: 'rawFiles' | 'wikiFlatMd' | 'sources' | 'entities' | 'topics';
   label: string;
   icon: typeof Database;
   color: string;
@@ -46,7 +46,7 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
     const wikiTotal = (stats.sources || 0) + (stats.entities || 0) + (stats.topics || 0) + (stats.wikiFlatMd || 0);
     const maxVal = Math.max(stats.rawFiles || 0, wikiTotal, 1);
     return CATEGORIES.map((cat) => {
-      const val = stats[cat.key] ?? 0;
+      const val = Number(stats[cat.key] ?? 0);
       const pct = maxVal > 0 ? Math.round((val / maxVal) * 100) : 0;
       return { ...cat, value: val, percent: pct };
     });
