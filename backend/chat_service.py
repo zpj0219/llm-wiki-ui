@@ -351,45 +351,43 @@ async def stream_message_async(
         except HermesError as e:
             yield {"type": "error", "message": str(e)}
             return
-        finally:
-            # 无论什么原因断开，先保存已有内容
-            stopped = bool(is_cancelled and is_cancelled()) or _is_stopped(session_id)
-            if stopped:
-                _save_once(stopped=True)
-                # 用户点击停止 → 不续收
-                pass
-            elif not saved and parts:
-                # 刷新断开 → 先保存已有内容，再后台续收
-                _save_once(stopped=False)
-                _active_background_tasks[session_id] = True
-                async def _background_continue():
-                    try:
-                        async for chunk in chat_completions_stream_async(
-                            api_messages, model, session_key=_session_key(user_id)
-                        ):
-                            if chunk.get("type") == "delta":
-                                delta = str(chunk.get("delta") or "")
-                                if delta:
-                                    parts.append(delta)
-                    except Exception:
-                        pass
-                    finally:
-                        _active_background_tasks.pop(session_id, None)
-                        if parts:
-                            update_last_message(session_id, "".join(parts), user_id)
-                asyncio.create_task(_background_continue())
-
-        if not saved:
+        else:
+            # else 只在 try 块正常完成时执行（无 break / return / exception）
+            # 正常完成 → 在这里持久化 + 发送 done
             stopped = bool(is_cancelled and is_cancelled()) or _is_stopped(session_id)
             updated, assistant_msg = _save_once(stopped=stopped)
-            if updated and assistant_msg and not _active_background_tasks.get(session_id):
+            if updated and assistant_msg:
                 yield {
                     "type": "stopped" if stopped else "done",
                     "session": _serialize(updated),
                     "assistantMessage": assistant_msg,
                 }
-        else:
-            yield {"type": "error", "message": "会话保存失败"}
+        finally:
+            # finally 只处理异常断开（break / GeneratorExit）：应急保存 + 后台续收
+            if not saved:
+                stopped = bool(is_cancelled and is_cancelled()) or _is_stopped(session_id)
+                if stopped:
+                    _save_once(stopped=True)
+                elif parts:
+                    # 浏览器刷新/断开 → 先保存已有内容，再后台续收
+                    _save_once(stopped=False)
+                    _active_background_tasks[session_id] = True
+                    async def _background_continue():
+                        try:
+                            async for chunk in chat_completions_stream_async(
+                                api_messages, model, session_key=_session_key(user_id)
+                            ):
+                                if chunk.get("type") == "delta":
+                                    delta = str(chunk.get("delta") or "")
+                                    if delta:
+                                        parts.append(delta)
+                        except Exception:
+                            pass
+                        finally:
+                            _active_background_tasks.pop(session_id, None)
+                            if parts:
+                                update_last_message(session_id, "".join(parts), user_id)
+                    asyncio.create_task(_background_continue())
 
     return _iter()
 
