@@ -1,16 +1,14 @@
 import { useState } from 'react';
-import { Palette, Globe, BookOpen, User } from 'lucide-react';
+import { Palette, BookOpen, User } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { SETTINGS_TABS, type SettingsTab } from '@shared/constants';
 import { GeneralSettingsTab } from '@/components/settings/GeneralSettingsTab';
-import { ApiSettingsTab } from '@/components/settings/ApiSettingsTab';
 import { LlmWikiSettingsTab } from '@/components/settings/LlmWikiSettingsTab';
 import { AccountSettingsTab } from '@/components/settings/AccountSettingsTab';
 
 const TAB_ICONS: Record<SettingsTab, typeof Palette> = {
   general: Palette,
-  api: Globe,
   'llm-wiki': BookOpen,
   account: User,
 };
@@ -50,7 +48,6 @@ export function SettingsPage({ onLogout }: SettingsPageProps) {
 
           <div className="flex-1 min-w-0">
             {tab === 'general' && <GeneralSettingsTab />}
-            {tab === 'api' && <ApiSettingsTab />}
             {tab === 'llm-wiki' && <LlmWikiSettingsTab />}
             {tab === 'account' && <AccountSettingsTab onLogout={onLogout} />}
           </div>

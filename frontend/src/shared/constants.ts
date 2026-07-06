@@ -45,11 +45,10 @@ export const LLM_WIKI_SKILL_REPO = 'https://github.com/sdyckjq-lab/llm-wiki-skil
 export const KARPATHY_WIKI_GIST =
   'https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f';
 
-export type SettingsTab = 'general' | 'api' | 'llm-wiki' | 'account';
+export type SettingsTab = 'general' | 'llm-wiki' | 'account';
 
 export const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: '通用' },
-  { id: 'api', label: 'API 环境' },
   { id: 'llm-wiki', label: 'LLM-Wiki' },
   { id: 'account', label: '账户' },
 ];

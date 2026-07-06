@@ -1,5 +1,5 @@
 import { getAuthHeaders, notifyAuthExpired, AuthExpiredError } from './authSession';
-import { getMeEndpoint } from '@shared/utils/apiConfig';
+import { API_BASE } from './api';
 
 export interface User {
   id: number;
@@ -57,7 +57,7 @@ export function getSessionUser(): User | null {
 
 export async function fetchCurrentUser(): Promise<User | null> {
   try {
-    const res = await requestJson<ApiResult<User>>(getMeEndpoint());
+    const res = await requestJson<ApiResult<User>>(`${API_BASE}/auth/me`);
     if (res.success && res.data) return res.data;
     return getSessionUser();
   } catch (e) {
