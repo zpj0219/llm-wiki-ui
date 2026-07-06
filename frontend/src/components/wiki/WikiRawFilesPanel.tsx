@@ -921,6 +921,15 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                 </div>
               ) : (
                 <div className="flex flex-col gap-px">
+                  {/* Column header — flex layout, widths match data rows exactly */}
+                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-muted-foreground/50 border-b border-border/50 pb-1.5 mb-1 select-none">
+                    <div className="w-10 shrink-0" />
+                    <div className="flex-[5] min-w-0">名称</div>
+                    <div className="flex-[1] inline-flex justify-center"><span className="w-10 text-center">类型</span></div>
+                    <div className="flex-[1.5] inline-flex justify-center"><span className="w-[72px] text-center">状态</span></div>
+                    <div className="flex-[2] inline-flex justify-center"><span className="w-[110px] text-center">修改时间</span></div>
+                    <div className="flex-[1] inline-flex justify-end pr-1">操作</div>
+                  </div>
                   {/* Directories first */}
                   {dirs.map((dir) => {
                     const isDirDropTarget = isOriginals && dropTargetDir === dir.relPath;
@@ -929,8 +938,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                       <div
                         key={dir.relPath}
                         className={cn(
-                          'grid items-center gap-2 px-3 py-1.5 rounded-md transition-colors',
-                          'grid-cols-[40px_minmax(0,1fr)_auto] sm:grid-cols-[40px_minmax(0,4fr)_minmax(0,0.5fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto]',
+                          'flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors',
                           'hover:bg-accent/70',
                           isDirDropTarget && 'bg-primary/10 ring-2 ring-primary/40',
                         )}
@@ -941,16 +949,25 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                         onDrop={isOriginals ? (e) => handleFolderDrop(e, dir.relPath) : undefined}
                         title={`点击打开 ${dirName}`}
                       >
-                        <Folder className="h-10 w-10 text-amber-500/80" strokeWidth={1.25} />
-                        <span className="text-xs truncate min-w-0">{dirName}</span>
-                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] text-muted-foreground/70 bg-muted/30 px-1 py-0.5 rounded truncate justify-self-center">
-                          目录
+                        <Folder className="h-10 w-10 shrink-0 text-amber-500/80" strokeWidth={1.25} />
+                        <span className="flex-[5] min-w-0 text-xs truncate">{dirName}</span>
+                        <span className="hidden sm:flex flex-[1] justify-center">
+                          <span className="inline-flex justify-center w-10 text-[10px] text-muted-foreground/70 bg-muted/30 px-1 py-0.5 rounded truncate">
+                            目录
+                          </span>
                         </span>
-                        <span className="hidden sm:inline" />
-                        <span className="hidden sm:inline" />
-                        {isOriginals && (
-                          <div className="flex items-center gap-0.5 justify-end">
-                            <span className="w-7" />
+                        <span className="hidden sm:flex flex-[1.5] justify-center">
+                          <span className="inline-flex justify-center w-[72px] text-[11px] text-muted-foreground/40">
+                            —
+                          </span>
+                        </span>
+                        <span className="hidden sm:flex flex-[2] justify-center">
+                          <span className="inline-flex justify-center w-[110px] text-[11px] text-muted-foreground/40 font-mono tabular-nums">
+                            —
+                          </span>
+                        </span>
+                        <div className="hidden sm:flex flex-[1] shrink-0 items-center gap-0.5 justify-end">
+                          {isOriginals && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -963,8 +980,8 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -983,13 +1000,13 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                     return (
                       <div
                         key={f.relPath}
-                        className="grid items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-accent/70 grid-cols-[40px_minmax(0,1fr)_auto] sm:grid-cols-[40px_minmax(0,4fr)_minmax(0,0.5fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto]"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-accent/70"
                         onMouseEnter={(e) => showTip(f.relPath, e.currentTarget)}
                         onMouseLeave={hideTip}
                         onClick={() => setPreviewPath(f.relPath)}
                       >
                         {/* Icon */}
-                        <div className="relative">
+                        <div className="relative shrink-0">
                           <File className="h-10 w-10 text-muted-foreground/60" strokeWidth={1.25} />
                           {status && (
                             <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-px">
@@ -998,30 +1015,37 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                           )}
                         </div>
                         {/* Name */}
-                        <span className="text-xs truncate min-w-0" title={fileName}>
+                        <span className="flex-[5] min-w-0 text-xs truncate" title={fileName}>
                           {fileName}
                         </span>
-                        {/* Type badge — narrow badge centered in column */}
-                        <span className="hidden sm:inline-flex justify-center w-12 text-[10px] font-mono text-muted-foreground/70 bg-muted/30 px-1 py-0.5 rounded tracking-wide truncate justify-self-center">
-                          {ext ?? '—'}
+                        {/* Type badge */}
+                        <span className="hidden sm:flex flex-[1] justify-center">
+                          <span className="inline-flex justify-center w-10 text-[10px] font-mono text-muted-foreground/70 bg-muted/30 px-1 py-0.5 rounded tracking-wide truncate">
+                            {ext ?? '—'}
+                          </span>
                         </span>
-                        {/* Status label — fixed width centered in column */}
-                        <span className={cn(
-                          'hidden sm:inline-flex justify-center w-[72px] text-[11px] whitespace-nowrap truncate justify-self-center',
-                          status?.stage === 'uploaded' && 'text-amber-600',
-                          status?.stage === 'fulltext' && 'text-blue-600',
-                          status?.stage === 'wiki' && 'text-green-600',
-                          !statusLabel && 'text-muted-foreground/50',
-                        )}>
-                          {statusLabel ?? '—'}
+                        {/* Status label */}
+                        <span className="hidden sm:flex flex-[1.5] justify-center">
+                          <span className={cn(
+                            'inline-flex justify-center w-[72px] text-[11px] whitespace-nowrap truncate',
+                            status?.stage === 'uploaded' && 'text-amber-600',
+                            status?.stage === 'fulltext' && 'text-blue-600',
+                            status?.stage === 'wiki' && 'text-green-600',
+                            !statusLabel && 'text-muted-foreground/50',
+                          )}>
+                            {statusLabel ?? '—'}
+                          </span>
                         </span>
-                        {/* Modified time — fixed width centered in column */}
-                        <span className="hidden sm:inline-flex items-center w-[110px] text-[11px] text-muted-foreground/70 font-mono tabular-nums truncate justify-self-center">
-                          {mtime ?? '—'}
+                        {/* Modified time */}
+                        <span className="hidden sm:flex flex-[2] justify-center">
+                          <span className="inline-flex justify-center w-[110px] text-[11px] text-muted-foreground/70 font-mono tabular-nums truncate">
+                            {mtime ?? '—'}
+                          </span>
                         </span>
                         {/* Actions */}
-                        {isOriginals && (
-                          <div className="flex items-center gap-0.5 justify-end">
+                        <div className="hidden sm:flex flex-[1] items-center gap-0.5 justify-end">
+                          {isOriginals && (
+                            <>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1046,8 +1070,9 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                          </div>
-                        )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
