@@ -522,11 +522,11 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
               <p className="text-xs text-muted-foreground text-center py-6 px-2">暂无对话</p>
             ) : (
               sessions.map((session) => (
-                <div key={session.id} className={cn('grid grid-cols-[1fr_auto] items-center gap-1 rounded-md pr-1', currentSessionId === session.id ? 'bg-accent' : 'hover:bg-accent/50')}>
+                <div key={session.id} className={cn('group grid grid-cols-[1fr_auto] items-center gap-1 rounded-md pr-1', currentSessionId === session.id ? 'bg-accent' : 'hover:bg-accent/50')}>
                   <button type="button" onClick={() => void handleSelectSession(session.id)} className={cn('flex items-center gap-2 px-2 py-2 text-sm rounded-md min-w-0 text-left', currentSessionId === session.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')} title={session.name}>
                     <MessageSquare className="h-4 w-4 shrink-0" /><span className="truncate">{session.name}</span>
                   </button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => void handleDeleteSession(session.id)} title="删除"><Trash2 className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100" onClick={() => void handleDeleteSession(session.id)} title="删除"><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               ))
             )}
@@ -591,7 +591,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                 <div
                   key={session.id}
                   className={cn(
-                    'grid items-center gap-1 rounded-md pr-1',
+                    'group grid items-center gap-1 rounded-md pr-1',
                     sidebarCollapsed ? 'grid-cols-[1fr]' : 'grid-cols-[1fr_auto]',
                     currentSessionId === session.id ? 'bg-accent' : 'hover:bg-accent/50'
                   )}
@@ -617,7 +617,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
                     onClick={() => void handleDeleteSession(session.id)}
                     title="删除"
                   >
