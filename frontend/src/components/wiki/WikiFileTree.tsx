@@ -158,10 +158,11 @@ function TreeItem({
         <button
           type="button"
           className={cn(
-            'flex w-full items-center gap-1 px-2 py-1 text-xs hover:bg-accent text-left min-w-0',
+            'flex w-full items-center gap-1 py-1 text-xs hover:bg-accent text-left min-w-0',
             dragOver && 'bg-primary/10 ring-2 ring-primary/40',
             uploading && 'opacity-50 pointer-events-none',
           )}
+          style={{ paddingLeft: `${8 + depth * 14}px`, paddingRight: '8px' }}
           onClick={() => !uploading && setOpen(!open)}
           onDragEnter={isDropTarget ? handleDragEnter : undefined}
           onDragLeave={isDropTarget ? handleDragLeave : undefined}
@@ -215,10 +216,11 @@ function TreeItem({
     <button
       type="button"
       className={cn(
-        'flex w-full items-center gap-1.5 px-2 py-1.5 text-xs transition-colors hover:bg-accent text-left min-w-0',
+        'flex w-full items-center gap-1.5 py-1.5 text-xs transition-colors hover:bg-accent text-left min-w-0',
         isSelected && 'text-foreground font-medium',
         !isSelected && 'text-muted-foreground/70',
       )}
+      style={{ paddingLeft: `${8 + depth * 14 + 18}px`, paddingRight: '8px' }}
       onClick={() => onSelect(node.path)}
     >
       {isWikiFile ? (
