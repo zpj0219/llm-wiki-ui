@@ -18,7 +18,7 @@ const CATEGORIES: {
 }[] = [
   { key: 'rawFiles', label: '原始文件', icon: HardDrive, color: 'bg-blue-500' },
   { key: 'wikiFlatMd', label: 'Wiki 页面', icon: FileText, color: 'bg-emerald-500' },
-  { key: 'sources', label: 'Sources', icon: Box, color: 'bg-amber-500' },
+  { key: 'sources', label: '摘要', icon: Box, color: 'bg-amber-500' },
   { key: 'entities', label: 'Entities', icon: Tag, color: 'bg-violet-500' },
   { key: 'topics', label: 'Topics', icon: Layers, color: 'bg-rose-500' },
 ];
@@ -140,13 +140,13 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
               Wiki 内容明细
             </CardTitle>
             <CardDescription className="text-xs">
-              sources · entities · topics 及平铺页面
+              entities · topics · sources 及平铺页面
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className={isMobile ? 'space-y-2' : 'grid grid-cols-2 gap-3'}>
               {[
-                { label: 'Sources', value: stats.sources ?? 0, color: 'bg-amber-500', hint: '参考来源文档' },
+                { label: '摘要', value: stats.sources ?? 0, color: 'bg-amber-500', hint: '摘要页面' },
                 { label: 'Entities', value: stats.entities ?? 0, color: 'bg-violet-500', hint: '实体页面' },
                 { label: 'Topics', value: stats.topics ?? 0, color: 'bg-rose-500', hint: '主题页面' },
                 { label: '平铺 Markdown', value: stats.wikiFlatMd ?? 0, color: 'bg-emerald-500', hint: 'wiki/ 下直接 .md' },
@@ -229,7 +229,7 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
                 </div>
               </div>
             )}
-            <p className="text-[10px] text-muted-foreground/70 pt-2 pb-1">阶段二：全文 → 实体 / 主题 / 来源</p>
+            <p className="text-[10px] text-muted-foreground/70 pt-2 pb-1">阶段二：全文 → 实体 / 主题 / 摘要</p>
             <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2">
               <span className="text-xs text-muted-foreground">已提取实体 (entities + topics + sources)</span>
               <span className="flex items-center gap-1.5 text-sm font-semibold tabular-nums text-emerald-600">

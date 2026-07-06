@@ -63,7 +63,7 @@ const FILTERABLE_GROUPS = ['entities', 'topics', 'sources'] as const satisfies r
 const GROUP_LABELS: Record<(typeof FILTERABLE_GROUPS)[number], string> = {
   entities: '实体',
   topics: '主题',
-  sources: '来源',
+  sources: '摘要',
 };
 
 type GraphPrefs = {

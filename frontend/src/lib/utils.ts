@@ -31,7 +31,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   'raw/inbox': '暂存',
   'wiki/entities': '实体',
   'wiki/topics': '主题',
-  'wiki/sources': '来源',
+  'wiki/sources': '摘要',
 };
 
 /** 返回路径对应的中文类别标签，未匹配时返回原始名称 */
