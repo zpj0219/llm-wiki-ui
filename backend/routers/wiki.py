@@ -5,11 +5,12 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from knowledge_store import delete_entry, ensure_kb_root, get_all_originals_status, get_page, get_stats, kb_root, list_entries, resolve_rel, save_page
+from routers.auth import get_current_user
 from wiki_index import (
     build_graph,
     get_backlinks,
@@ -30,7 +31,7 @@ class SearchRequest(BaseModel):
 
 
 @router.get("/entries")
-def api_list_entries():
+def api_list_entries(_: dict = Depends(get_current_user)):
     return {
         "success": True,
         "files": list_entries(),
@@ -39,12 +40,12 @@ def api_list_entries():
 
 
 @router.get("/stats")
-def api_stats():
+def api_stats(_: dict = Depends(get_current_user)):
     return {"success": True, "stats": get_stats()}
 
 
 @router.get("/pages/{path:path}")
-def api_get_page(path: str):
+def api_get_page(path: str, _: dict = Depends(get_current_user)):
     rel_path = path.replace("\\", "/")
     content = get_page(rel_path)
     if content is None:
@@ -53,7 +54,7 @@ def api_get_page(path: str):
 
 
 @router.put("/pages/{path:path}")
-def api_save_page(path: str, body: SavePageRequest):
+def api_save_page(path: str, body: SavePageRequest, _: dict = Depends(get_current_user)):
     rel_path = path.replace("\\", "/")
     try:
         save_page(rel_path, body.content)
@@ -64,35 +65,35 @@ def api_save_page(path: str, body: SavePageRequest):
 
 
 @router.get("/backlinks/{path:path}")
-def api_backlinks(path: str):
+def api_backlinks(path: str, _: dict = Depends(get_current_user)):
     rel_path = path.replace("\\", "/")
     return {"success": True, "backlinks": get_backlinks(rel_path)}
 
 
 @router.post("/search")
-def api_search(body: SearchRequest):
+def api_search(body: SearchRequest, _: dict = Depends(get_current_user)):
     results = search_pages(body.query, body.limit)
     return {"success": True, "results": results}
 
 
 @router.get("/graph")
-def api_graph():
+def api_graph(_: dict = Depends(get_current_user)):
     return {"success": True, **build_graph()}
 
 
 @router.post("/refresh")
-def api_refresh():
+def api_refresh(_: dict = Depends(get_current_user)):
     invalidate_index()
     return {"success": True, "message": "索引已刷新"}
 
 
 @router.get("/originals-status")
-def api_originals_status():
+def api_originals_status(_: dict = Depends(get_current_user)):
     return {"success": True, "statuses": get_all_originals_status()}
 
 
 @router.post("/ensure-dir")
-def api_ensure_dir(dir_path: str = Body(..., embed=True)):
+def api_ensure_dir(dir_path: str = Body(..., embed=True), _: dict = Depends(get_current_user)):
     """创建知识库目录（用于上传空文件夹）"""
     ensure_kb_root()
     try:
@@ -104,7 +105,7 @@ def api_ensure_dir(dir_path: str = Body(..., embed=True)):
 
 
 @router.delete("/pages/{path:path}")
-def api_delete_entry(path: str):
+def api_delete_entry(path: str, _: dict = Depends(get_current_user)):
     """删除文件或目录"""
     try:
         delete_entry(path)
@@ -114,7 +115,7 @@ def api_delete_entry(path: str):
 
 
 @router.get("/download/{path:path}")
-def api_download_file(path: str):
+def api_download_file(path: str, _: dict = Depends(get_current_user)):
     """下载文件（以附件形式返回原始文件）"""
     try:
         file_path = resolve_rel(path)

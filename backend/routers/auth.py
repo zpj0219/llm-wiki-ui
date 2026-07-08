@@ -10,13 +10,16 @@ from auth_store import (
     PERMISSION_FIELDS,
     _check_is_admin,
     authenticate,
+    bump_token_version,
     create_user,
     delete_user,
     get_all_users,
     get_user_by_token,
     get_user_permissions,
-    issue_token,
+    issue_tokens,
     revoke_token,
+    revoke_user_tokens,
+    rotate_access_token,
     set_user_permissions,
     update_user,
 )
@@ -71,6 +74,9 @@ def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return current_user
 
+# 统一重登错误码: 499 或 401 + 特定 errorCode
+RELOGIN_ERROR_CODE = "TOKEN_EXPIRED_OR_REVOKED"
+
 
 @router.post("/login")
 def login(body: LoginRequest):
@@ -98,7 +104,7 @@ def login(body: LoginRequest):
             "errorMessage": "用户名或密码错误",
         }
 
-    token = issue_token(user)
+    tokens = issue_tokens(user)
     permissions = get_user_permissions(user["id"])
     return {
         "success": True,
@@ -113,8 +119,10 @@ def login(body: LoginRequest):
                 "created_at": user.get("created_at"),
             },
             "permissions": permissions,
-            "access_token": token,
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
             "token_type": "bearer",
+            "expires_in": tokens["expires_in"],
         },
     }
 
@@ -131,6 +139,18 @@ def logout(authorization: str | None = Header(default=None)):
     if token:
         revoke_token(token)
     return {"success": True}
+
+
+@router.post("/refresh")
+def api_refresh_token(authorization: str | None = Header(default=None)):
+    """用 refresh_token 换取新的 access_token。"""
+    token = _extract_bearer(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="缺少 refresh_token")
+    result = rotate_access_token(token)
+    if not result:
+        raise HTTPException(status_code=401, detail="refresh_token 无效或已过期，请重新登录")
+    return {"success": True, "data": result}
 
 
 # ── 用户管理（仅管理员） ──────────────────────────────────────────
@@ -195,10 +215,18 @@ def api_get_user_permissions(user_id: int, admin: dict = Depends(require_admin))
 
 @router.put("/users/{user_id}/permissions")
 def api_update_user_permissions(user_id: int, body: UpdatePermissionsRequest, admin: dict = Depends(require_admin)):
-    # 只允许设置已定义的权限字段
     filtered = {
         f: bool(body.permissions.get(f, DEFAULT_USER_PERMISSIONS[f]))
         for f in PERMISSION_FIELDS
     }
     set_user_permissions(user_id, filtered)
+    # 权限变更后直接在同一连接内使 token 失效
+    from database import get_connection
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET token_version = token_version + 1 WHERE id = ?",
+            (user_id,),
+        )
+        conn.execute("DELETE FROM auth_tokens WHERE user_id = ?", (user_id,))
+        conn.commit()
     return {"success": True, "permissions": filtered}

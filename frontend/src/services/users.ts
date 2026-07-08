@@ -1,4 +1,4 @@
-import { getAuthHeaders, notifyAuthExpired, AuthExpiredError } from './authSession';
+import { getAuthHeaders, notifyAuthExpired, AuthExpiredError, tryRefreshToken } from './authSession';
 import { API_BASE } from './api';
 import type { UserPermissions } from '@shared/types';
 
@@ -16,7 +16,7 @@ export interface User {
 type ApiResult<T> = { success: boolean; data?: T; errorMessage?: string; message?: string };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...init,
     headers: {
       ...getAuthHeaders(),
@@ -24,9 +24,22 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     },
   });
 
+  // 401 → 尝试 refresh
   if (response.status === 401) {
-    notifyAuthExpired({ source: url });
-    throw new AuthExpiredError();
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      response = await fetch(url, {
+        ...init,
+        headers: {
+          ...getAuthHeaders(),
+          ...init?.headers,
+        },
+      });
+    }
+    if (response.status === 401) {
+      notifyAuthExpired({ source: url });
+      throw new AuthExpiredError();
+    }
   }
 
   if (!response.ok) {

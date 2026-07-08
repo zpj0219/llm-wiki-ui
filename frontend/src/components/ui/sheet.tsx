@@ -28,7 +28,7 @@ export function Sheet({ open, onOpenChange, side = 'left', children }: SheetProp
       <div className="fixed inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
       <div
         className={cn(
-          'fixed top-0 h-full w-[var(--sidebar-width)] max-w-[85vw] bg-card shadow-xl border-r animate-in slide-in-from-left duration-200',
+          'fixed top-0 h-full w-[var(--sidebar-width)] max-w-[85vw] bg-card shadow-xl border-r flex flex-col',
           side === 'right' && 'right-0 border-l border-r-0 slide-in-from-right'
         )}
       >

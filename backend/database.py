@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
     full_name TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     is_superuser INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    token_version INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS auth_tokens (
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     user_id INTEGER NOT NULL,
     username TEXT NOT NULL,
     expires_at REAL NOT NULL,
+    token_version INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -113,6 +115,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE chat_sessions ADD COLUMN model_id TEXT NOT NULL DEFAULT 'hermes-agent'"
         )
+    # 迁移：为 users 表添加 token_version（如果不存在）
+    user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "token_version" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+    # 迁移：为 auth_tokens 表添加 token_version（如果不存在）
+    token_cols = {row[1] for row in conn.execute("PRAGMA table_info(auth_tokens)").fetchall()}
+    if "token_version" not in token_cols:
+        conn.execute("ALTER TABLE auth_tokens ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
 
 
 def init_db() -> None:

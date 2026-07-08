@@ -26,7 +26,7 @@ import {
   getChatSession,
   listChatModels,
   listChatSessions,
-  streamChatMessage,
+  streamChatMessageWithAuth,
   updateChatSessionModel,
 } from '@/services/chatApi';
 import { getAuthHeaders } from '@/services/authSession';
@@ -425,7 +425,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     const abortController = new AbortController();
     abortRef.current = abortController;
 
-    const streamRes = await streamChatMessage(
+    const streamRes = await streamChatMessageWithAuth(
       sessionId,
       text,
       (event) => {

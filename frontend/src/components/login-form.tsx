@@ -12,7 +12,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { API_BASE } from '@/services/api';
-import { persistAccessToken } from '@/services/authSession';
+import { persistTokens, broadcastAuthStateChange } from '@/services/authSession';
 
 type LoginFormProps = React.ComponentPropsWithoutRef<'div'> & {
   onLoginSuccess?: () => void;
@@ -82,7 +82,9 @@ export function LoginForm({ className, onLoginSuccess, ...props }: LoginFormProp
       if (!token || typeof token !== 'string') {
         throw new Error('登录成功但未返回 token');
       }
-      persistAccessToken(token);
+      const refreshToken =
+        data.refresh_token ?? responseData.refresh_token ?? responseData.data?.refresh_token ?? '';
+      persistTokens(token, refreshToken);
 
       const user = data.user ?? {};
       localStorage.setItem('username', user.username ?? data.username ?? safeUsername);
@@ -101,6 +103,9 @@ export function LoginForm({ className, onLoginSuccess, ...props }: LoginFormProp
       if (permissions) {
         localStorage.setItem('userPermissions', JSON.stringify(permissions));
       }
+
+      // 通知其他窗口同步登录状态
+      broadcastAuthStateChange();
 
       onLoginSuccess?.();
     } catch (err: unknown) {

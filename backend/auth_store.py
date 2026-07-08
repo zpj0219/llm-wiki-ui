@@ -8,7 +8,7 @@ from typing import Any
 
 from database import get_connection, hash_password, verify_password
 
-_TOKEN_TTL = 86400 * 7  # 7 天
+_ACCESS_TOKEN_TTL = 3600      # access token 1 小时
 
 # ── 权限常量 ────────────────────────────────────────────────────────
 
@@ -58,18 +58,94 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None | str:
     return dict(row)
 
 
-def issue_token(user: dict[str, Any]) -> str:
-    token = secrets.token_urlsafe(32)
+def make_refresh_token(user: dict[str, Any]) -> str:
+    """构造 refresh_token 字符串 {user_id}:{version}:{random}。"""
+    return f"{user['id']}:{user.get('token_version', 0)}:{secrets.token_urlsafe(24)}"
+
+
+def issue_tokens(user: dict[str, Any]) -> dict[str, str]:
+    """签发 access_token + refresh_token。"""
+    access_token = secrets.token_urlsafe(32)
+    now = time.time()
+    token_version = user.get("token_version", 0)
     with get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO auth_tokens (token, user_id, username, expires_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO auth_tokens (token, user_id, username, expires_at, token_version)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (token, user["id"], user["username"], time.time() + _TOKEN_TTL),
+            (access_token, user["id"], user["username"], now + _ACCESS_TOKEN_TTL, token_version),
         )
         conn.commit()
-    return token
+    return {
+        "access_token": access_token,
+        "refresh_token": make_refresh_token(user),
+        "token_type": "bearer",
+        "expires_in": _ACCESS_TOKEN_TTL,
+    }
+
+
+def rotate_access_token(refresh_token_str: str) -> dict[str, str] | None:
+    """
+    用 refresh_token 换取新的 access_token。
+    refresh_token 格式: {user_id}:{token_version}:{random}
+    校验 user 的当前 token_version 是否匹配，不匹配则拒绝（强制重登）。
+    """
+    try:
+        parts = refresh_token_str.split(":", 2)
+        user_id = int(parts[0])
+        token_ver = int(parts[1])
+    except (ValueError, IndexError):
+        return None
+
+    with get_connection() as conn:
+        user = conn.execute(
+            "SELECT id, username, token_version, is_active FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    if not user:
+        return None
+    if not user["is_active"]:
+        return None
+    if int(user["token_version"]) != token_ver:
+        return None  # 版本不匹配，权限/密码变更过，强制重登
+
+    access_token = secrets.token_urlsafe(32)
+    now = time.time()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO auth_tokens (token, user_id, username, expires_at, token_version)
+            VALUES (?, ?, ?, ?, ?)""",
+            (access_token, user["id"], user["username"], now + _ACCESS_TOKEN_TTL, token_ver),
+        )
+        conn.commit()
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token_str,  # 不变
+        "token_type": "bearer",
+        "expires_in": _ACCESS_TOKEN_TTL,
+    }
+
+
+def bump_token_version(user_id: int) -> int:
+    """递增用户的 token_version，使所有旧 token 失效。返回新版本号。"""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET token_version = token_version + 1 WHERE id = ?",
+            (user_id,),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT token_version FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    return int(row["token_version"]) if row else 0
+
+
+def revoke_user_tokens(user_id: int) -> None:
+    """删除某用户的所有 token（用于强制重登）。"""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM auth_tokens WHERE user_id = ?", (user_id,))
+        conn.commit()
 
 
 def revoke_token(token: str) -> None:
@@ -88,7 +164,7 @@ def get_user_by_token(token: str) -> dict[str, Any] | None:
     with get_connection() as conn:
         _purge_expired(conn)
         session = conn.execute(
-            "SELECT user_id, username, expires_at FROM auth_tokens WHERE token = ?",
+            "SELECT user_id, username, expires_at, token_version FROM auth_tokens WHERE token = ?",
             (token,),
         ).fetchone()
         if not session:
@@ -97,11 +173,17 @@ def get_user_by_token(token: str) -> dict[str, Any] | None:
             conn.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
             conn.commit()
             return None
+
+        # 校验 token_version 是否匹配（权限/密码变更后旧 token 失效）
         user = conn.execute(
             "SELECT * FROM users WHERE id = ?",
             (session["user_id"],),
         ).fetchone()
     if not user:
+        return None
+    if int(user["token_version"] or 0) != int(session["token_version"] or 0):
+        return None  # 版本不匹配 → 等同于过期
+    if not user["is_active"]:
         return None
     return _public_user(dict(user))
 
@@ -225,7 +307,7 @@ def update_user(
     is_active: bool | None = None,
     is_superuser: bool | None = None,
 ) -> dict[str, Any] | None:
-    """更新用户信息。"""
+    """更新用户信息（密码/权限变更时会 bump token_version 强制重登）。"""
     with get_connection() as conn:
         row = conn.execute(
             "SELECT * FROM users WHERE id = ?", (user_id,)
@@ -235,12 +317,12 @@ def update_user(
 
         updates: list[str] = []
         params: list[Any] = []
+        needs_relogin = False
 
         if username is not None:
             uname = username.strip()
             if not uname:
                 raise ValueError("用户名不能为空")
-            # 检查是否与其他用户重复
             dup = conn.execute(
                 "SELECT id FROM users WHERE username = ? AND id != ?", (uname, user_id)
             ).fetchone()
@@ -254,6 +336,7 @@ def update_user(
                 raise ValueError("密码不能为空")
             updates.append("password_hash = ?")
             params.append(hash_password(password))
+            needs_relogin = True
 
         if email is not None:
             updates.append("email = ?")
@@ -264,13 +347,22 @@ def update_user(
         if is_active is not None:
             updates.append("is_active = ?")
             params.append(int(is_active))
+            needs_relogin = True
         if is_superuser is not None:
             updates.append("is_superuser = ?")
             params.append(int(is_superuser))
+            needs_relogin = True
 
         if updates:
             params.append(user_id)
             conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+            if needs_relogin:
+                # 在同一个连接内递增 version 和清 token，避免 database is locked
+                conn.execute(
+                    "UPDATE users SET token_version = token_version + 1 WHERE id = ?",
+                    (user_id,),
+                )
+                conn.execute("DELETE FROM auth_tokens WHERE user_id = ?", (user_id,))
             conn.commit()
 
         user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()

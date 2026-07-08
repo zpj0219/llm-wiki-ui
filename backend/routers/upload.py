@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/upload", tags=["upload"])
 
 
 @router.get("/config")
-def upload_config():
+def upload_config(_: dict = Depends(get_current_user)):
     ensure_kb_root()
     return {
         "success": True,
@@ -31,7 +31,7 @@ def upload_config():
 
 
 @router.get("/originals-dirs")
-def api_list_originals_dirs():
+def api_list_originals_dirs(_: dict = Depends(get_current_user)):
     ensure_kb_root()
     return {
         "success": True,

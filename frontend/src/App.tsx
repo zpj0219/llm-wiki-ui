@@ -7,7 +7,7 @@ import { LoginPage } from '@/pages/Login';
 import { SettingsPage } from '@/pages/Settings';
 import { AccountManagementTab } from '@/components/settings/AccountManagementTab';
 import { PAGES, type PageId, type LLMWikiTab } from '@shared/constants';
-import { AUTH_EXPIRED_EVENT, isLoggedInLocally, getStoredPermissions, clearAuthSession } from '@/services/authSession';
+import { AUTH_EXPIRED_EVENT, AUTH_STATE_CHANGED, isLoggedInLocally, getStoredPermissions, clearAuthSession } from '@/services/authSession';
 import { refreshWikiIndex } from '@/services/wikiApi';
 import { ChatHeaderExtrasProvider } from '@/contexts/ChatHeaderExtras';
 import { Sheet, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
@@ -74,6 +74,48 @@ export default function App() {
   const handleRefresh = useCallback(async () => {
     await refreshWikiIndex().catch(() => undefined);
     setRefreshKey((k) => k + 1);
+  }, []);
+
+  // 监听其他窗口的登录状态变更，同步刷新当前窗口
+  // 1. AUTH_STATE_CHANGED: 同窗口内 token 刷新等广播
+  // 2. storage 事件: 浏览器原生跨窗口 localStorage 变更通知
+  useEffect(() => {
+    const syncState = () => {
+      const loggedIn = isLoggedInLocally();
+      const perms = getStoredPermissions() as UserPermissions | null;
+      if (!loggedIn || !perms) {
+        // 其他窗口清除了登录态 → 当前窗口也退出
+        setPermissions(null);
+        setIsLoggedIn(false);
+        setAuthNotice('登录状态已变更，请重新登录');
+        return;
+      }
+      // 其他窗口更新了登录信息 → 当前窗口同步
+      setIsLoggedIn(true);
+      setPermissions(perms);
+      setCurrentPage(getDefaultPage(perms));
+      setAuthNotice(null);
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      // 只关心认证相关的 key 变更
+      if (
+        e.key === 'isLoggedIn' ||
+        e.key === 'accessToken' ||
+        e.key === 'refreshToken' ||
+        e.key === 'userPermissions' ||
+        e.key === null // null means clear() was called
+      ) {
+        syncState();
+      }
+    };
+
+    window.addEventListener(AUTH_STATE_CHANGED, syncState);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(AUTH_STATE_CHANGED, syncState);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   useEffect(() => {
