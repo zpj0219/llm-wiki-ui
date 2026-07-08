@@ -96,6 +96,12 @@ export function LoginForm({ className, onLoginSuccess, ...props }: LoginFormProp
       localStorage.setItem('savedUsername', safeUsername);
       localStorage.setItem('savedPassword', password);
 
+      // 保存权限
+      const permissions = responseData.permissions ?? data.permissions;
+      if (permissions) {
+        localStorage.setItem('userPermissions', JSON.stringify(permissions));
+      }
+
       onLoginSuccess?.();
     } catch (err: unknown) {
       let message = err instanceof Error ? err.message : '登录失败，请重试';

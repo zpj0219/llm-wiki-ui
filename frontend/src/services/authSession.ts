@@ -39,6 +39,9 @@ export function clearAuthSession(): void {
     'userEmail',
     'isSuperUser',
     'fullName',
+    'userPermissions',
+    'savedUsername',
+    'savedPassword',
   ];
   for (const key of keys) {
     localStorage.removeItem(key);
@@ -79,4 +82,18 @@ export function getStoredUserEmail(): string {
 
 export function isStoredSuperUser(): boolean {
   return localStorage.getItem('isSuperUser') === 'true';
+}
+
+export function getStoredPermissions(): Record<string, boolean> | null {
+  try {
+    const raw = localStorage.getItem('userPermissions');
+    if (!raw) return null;
+    return JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredPermissions(permissions: Record<string, boolean>): void {
+  localStorage.setItem('userPermissions', JSON.stringify(permissions));
 }

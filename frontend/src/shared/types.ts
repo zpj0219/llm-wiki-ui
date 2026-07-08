@@ -95,3 +95,45 @@ export type OriginalsFileStatus = {
   stage: OriginalStage;
   wikiPage?: string;
 };
+
+// ── 权限 ───────────────────────────────────────────────────────────
+
+export type UserPermissions = {
+  can_access_wiki_workbench: boolean;
+  can_access_wiki_rawfiles: boolean;
+  can_access_wiki_graph: boolean;
+  can_access_wiki_search: boolean;
+  can_access_chat: boolean;
+  can_access_settings: boolean;
+  can_manage_accounts: boolean;
+};
+
+export const PERMISSION_FIELDS: (keyof UserPermissions)[] = [
+  'can_access_wiki_workbench',
+  'can_access_wiki_rawfiles',
+  'can_access_wiki_graph',
+  'can_access_wiki_search',
+  'can_access_chat',
+  'can_access_settings',
+  'can_manage_accounts',
+];
+
+export const DEFAULT_USER_PERMISSIONS: UserPermissions = {
+  can_access_wiki_workbench: true,
+  can_access_wiki_rawfiles: true,
+  can_access_wiki_graph: true,
+  can_access_wiki_search: true,
+  can_access_chat: true,
+  can_access_settings: true,
+  can_manage_accounts: false,
+};
+
+export const PERMISSION_LABELS: Record<keyof UserPermissions, string> = {
+  can_access_wiki_workbench: '知识库 · 工作台',
+  can_access_wiki_rawfiles: '知识库 · 文件管理',
+  can_access_wiki_graph: '知识库 · 关系图',
+  can_access_wiki_search: '知识库 · 概况',
+  can_access_chat: '对话',
+  can_access_settings: '设置 · LLM-Wiki 配置',
+  can_manage_accounts: '账号管理（管理员）',
+};

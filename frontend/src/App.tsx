@@ -5,11 +5,25 @@ import { LLMWikiPage } from '@/pages/LLMWiki';
 import { ChatPage } from '@/pages/Chat';
 import { LoginPage } from '@/pages/Login';
 import { SettingsPage } from '@/pages/Settings';
+import { AccountManagementTab } from '@/components/settings/AccountManagementTab';
 import { PAGES, type PageId, type LLMWikiTab } from '@shared/constants';
-import { AUTH_EXPIRED_EVENT, isLoggedInLocally } from '@/services/authSession';
+import { AUTH_EXPIRED_EVENT, isLoggedInLocally, getStoredPermissions, clearAuthSession } from '@/services/authSession';
 import { refreshWikiIndex } from '@/services/wikiApi';
 import { ChatHeaderExtrasProvider } from '@/contexts/ChatHeaderExtras';
 import { Sheet, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
+import { fetchCurrentUser } from '@/services/users';
+import type { UserPermissions } from '@shared/types';
+
+/** Determine the best default page based on user permissions. */
+function getDefaultPage(perms: UserPermissions | null): PageId {
+  if (!perms) return PAGES.LLM_WIKI;
+  if (perms.can_access_chat) return PAGES.CHAT;
+  if (perms.can_access_wiki_workbench || perms.can_access_wiki_rawfiles ||
+      perms.can_access_wiki_graph || perms.can_access_wiki_search) {
+    return PAGES.LLM_WIKI;
+  }
+  return PAGES.SETTINGS;
+}
 
 function useIsMobile() {
   const [v, setV] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches);
@@ -20,7 +34,10 @@ function useIsMobile() {
 export default function App() {
   const isMobile = useIsMobile();
   const [isLoggedIn, setIsLoggedIn] = useState(() => isLoggedInLocally());
-  const [currentPage, setCurrentPage] = useState<PageId>(PAGES.LLM_WIKI);
+  const [currentPage, setCurrentPage] = useState<PageId>(() => {
+    const perms = getStoredPermissions() as UserPermissions | null;
+    return getDefaultPage(perms);
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [llmWikiTab, setLlmWikiTab] = useState<LLMWikiTab>('workbench');
@@ -28,17 +45,30 @@ export default function App() {
   const [graphFocusPath, setGraphFocusPath] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [chatNewSessionTrigger, setChatNewSessionTrigger] = useState(0);
+  const [permissions, setPermissions] = useState<UserPermissions | null>(
+    () => getStoredPermissions() as UserPermissions | null
+  );
 
   const handleLoginSuccess = useCallback(() => {
     setIsLoggedIn(true);
     setAuthNotice(null);
-    setCurrentPage(PAGES.LLM_WIKI);
+    // 登录后重新拉取权限（确保与后端同步）
+    void fetchCurrentUser().then((user) => {
+      if (user?.permissions) {
+        setPermissions(user.permissions);
+        setCurrentPage(getDefaultPage(user.permissions));
+      } else {
+        setCurrentPage(getDefaultPage(null));
+      }
+    });
   }, []);
 
   const handleLogout = useCallback(() => {
+    clearAuthSession();
     setIsLoggedIn(false);
     setCurrentPage(PAGES.LLM_WIKI);
     setAuthNotice(null);
+    setPermissions(null);
   }, []);
 
   const handleRefresh = useCallback(async () => {
@@ -95,7 +125,7 @@ export default function App() {
             transform: sidebarCollapsed ? 'translateX(-12px)' : 'translateX(0)',
           }}
         >
-          <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+          <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} permissions={permissions} onLogout={handleLogout} />
         </div>
       )}
 
@@ -105,7 +135,7 @@ export default function App() {
           <SheetTitle>导航</SheetTitle>
           <SheetClose onClose={() => setMobileMenuOpen(false)} />
         </SheetHeader>
-        <Sidebar currentPage={currentPage} onPageChange={(p) => { setCurrentPage(p); setMobileMenuOpen(false); }} />
+        <Sidebar currentPage={currentPage} onPageChange={(p) => { setCurrentPage(p); setMobileMenuOpen(false); }} permissions={permissions} onLogout={handleLogout} />
       </Sheet>
 
       <div className="app-main flex-1 flex flex-col min-w-0 mx-0 my-1.5 lg:m-3 rounded-xl border border-border bg-card overflow-hidden">
@@ -133,7 +163,10 @@ export default function App() {
             <ChatPage newSessionTrigger={chatNewSessionTrigger} />
           )}
           {currentPage === PAGES.SETTINGS && (
-            <SettingsPage onLogout={handleLogout} />
+            <SettingsPage />
+          )}
+          {currentPage === PAGES.ACCOUNT_MANAGEMENT && (
+            <AccountManagementTab />
           )}
         </main>
       </div>

@@ -5,6 +5,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { PAGES, PAGE_LABELS, LLM_WIKI_TABS, KARPATHY_WIKI_TAGLINE, type LLMWikiTab, type PageId } from '@shared/constants';
 import { useChatHeaderExtrasSlot } from '@/contexts/ChatHeaderExtras';
+import { getStoredPermissions } from '@/services/authSession';
+import type { UserPermissions } from '@shared/types';
 
 const TAB_ICONS: Record<LLMWikiTab, typeof LayoutGrid> = {
   workbench: LayoutGrid,
@@ -38,6 +40,23 @@ export function SiteHeader({
   const PageIcon =
     currentPage === PAGES.CHAT ? MessageSquare : BookOpen;
   const chatHeaderExtras = useChatHeaderExtrasSlot();
+
+  const perms = getStoredPermissions() as UserPermissions | null;
+  const isAdmin = localStorage.getItem('isSuperUser') === 'true';
+
+  /** Filter LLM_WIKI_TABS by permissions */
+  const visibleWikiTabs = LLM_WIKI_TABS.filter((t) => {
+    if (!t.permissionKey) return true;
+    if (isAdmin) return true;
+    if (!perms) return true;
+    return perms[t.permissionKey] !== false;
+  });
+
+  // If the current llmWikiTab is hidden, switch to the first visible one
+  if (currentPage === PAGES.LLM_WIKI && !visibleWikiTabs.some((t) => t.id === llmWikiTab)) {
+    const first = visibleWikiTabs[0];
+    if (first) onLlmWikiTabChange(first.id);
+  }
 
   return (
     <header
@@ -76,7 +95,7 @@ export function SiteHeader({
       {currentPage === PAGES.LLM_WIKI && !sidebarCollapsed && (
         <Tabs value={llmWikiTab} onValueChange={(v) => onLlmWikiTabChange(v as LLMWikiTab)}>
           <TabsList className="h-9">
-            {LLM_WIKI_TABS.map((t) => {
+            {visibleWikiTabs.map((t) => {
               const Icon = TAB_ICONS[t.id];
               return (
                 <TabsTrigger key={t.id} value={t.id} className="text-xs gap-1.5 px-3">

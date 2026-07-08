@@ -52,6 +52,18 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS user_permissions (
+    user_id INTEGER PRIMARY KEY,
+    can_access_wiki_workbench INTEGER NOT NULL DEFAULT 1,
+    can_access_wiki_rawfiles INTEGER NOT NULL DEFAULT 1,
+    can_access_wiki_graph INTEGER NOT NULL DEFAULT 1,
+    can_access_wiki_search INTEGER NOT NULL DEFAULT 1,
+    can_access_chat INTEGER NOT NULL DEFAULT 1,
+    can_access_settings INTEGER NOT NULL DEFAULT 1,
+    can_manage_accounts INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, sort_order);
@@ -109,6 +121,7 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         _migrate(conn)
         _seed_users(conn)
+        _seed_permissions(conn)
         conn.commit()
 
 
@@ -131,6 +144,26 @@ def _seed_users(conn: sqlite3.Connection) -> None:
                 1 if u["is_superuser"] else 0,
                 now,
             ),
+        )
+
+
+def _seed_permissions(conn: sqlite3.Connection) -> None:
+    """为已有用户补充默认权限，仅在新表为空时执行。"""
+    row = conn.execute("SELECT COUNT(*) FROM user_permissions").fetchone()
+    if row and row[0] > 0:
+        return
+    users = conn.execute("SELECT id, is_superuser FROM users").fetchall()
+    for u in users:
+        is_admin = bool(u["is_superuser"])
+        conn.execute(
+            """
+            INSERT INTO user_permissions (
+                user_id, can_access_wiki_workbench, can_access_wiki_rawfiles,
+                can_access_wiki_graph, can_access_wiki_search,
+                can_access_chat, can_access_settings, can_manage_accounts
+            ) VALUES (?, 1, 1, 1, 1, 1, 1, ?)
+            """,
+            (u["id"], 1 if is_admin else 0),
         )
 
 

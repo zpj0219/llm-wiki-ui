@@ -1,7 +1,10 @@
+import type { UserPermissions } from './types';
+
 export const PAGES = {
   LOGIN: 'login',
   LLM_WIKI: 'llm-wiki',
   CHAT: 'chat',
+  ACCOUNT_MANAGEMENT: 'account-management',
   SETTINGS: 'settings',
 } as const;
 
@@ -11,6 +14,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   [PAGES.LOGIN]: '登录',
   [PAGES.LLM_WIKI]: '知识库',
   [PAGES.CHAT]: '对话',
+  [PAGES.ACCOUNT_MANAGEMENT]: '账号管理',
   [PAGES.SETTINGS]: '设置',
 };
 
@@ -31,12 +35,24 @@ export const DEFAULT_API_ENVIRONMENT: ApiEnvironment = 'LOCAL';
 
 export type LLMWikiTab = 'workbench' | 'rawfiles' | 'graph' | 'search';
 
-export const LLM_WIKI_TABS: { id: LLMWikiTab; label: string }[] = [
-  { id: 'workbench', label: '工作台' },
-  { id: 'rawfiles', label: '文件管理' },
-  { id: 'graph', label: '关系图' },
-  { id: 'search', label: '概况' },
+export const LLM_WIKI_TABS: { id: LLMWikiTab; label: string; permissionKey?: keyof UserPermissions }[] = [
+  { id: 'workbench', label: '工作台', permissionKey: 'can_access_wiki_workbench' },
+  { id: 'rawfiles', label: '文件管理', permissionKey: 'can_access_wiki_rawfiles' },
+  { id: 'graph', label: '关系图', permissionKey: 'can_access_wiki_graph' },
+  { id: 'search', label: '概况', permissionKey: 'can_access_wiki_search' },
 ];
+
+/** Check if user has access to at least one wiki subtab. */
+export function hasAnyWikiAccess(permissions: UserPermissions | null, isAdmin: boolean): boolean {
+  if (isAdmin) return true;
+  if (!permissions) return true;
+  return (
+    permissions.can_access_wiki_workbench ||
+    permissions.can_access_wiki_rawfiles ||
+    permissions.can_access_wiki_graph ||
+    permissions.can_access_wiki_search
+  );
+}
 
 /** 产品标语 — 统一文案 */
 export const KARPATHY_WIKI_TAGLINE = 'Hermes Agent · 可复利增长的互链知识库';
@@ -45,10 +61,9 @@ export const LLM_WIKI_SKILL_REPO = 'https://github.com/sdyckjq-lab/llm-wiki-skil
 export const KARPATHY_WIKI_GIST =
   'https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f';
 
-export type SettingsTab = 'general' | 'llm-wiki' | 'account';
+export type SettingsTab = 'general' | 'llm-wiki';
 
 export const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: '通用' },
   { id: 'llm-wiki', label: 'LLM-Wiki' },
-  { id: 'account', label: '账户' },
 ];

@@ -1,20 +1,37 @@
-import { BookOpen, MessageSquare, Settings } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserInfo } from '@/components/layout/UserInfo';
-import { PAGES, PAGE_LABELS, KARPATHY_WIKI_TAGLINE, type PageId } from '@shared/constants';
+import { PAGES, PAGE_LABELS, KARPATHY_WIKI_TAGLINE, type PageId, hasAnyWikiAccess } from '@shared/constants';
+import type { UserPermissions } from '@shared/types';
 
 type SidebarProps = {
   currentPage: PageId;
   onPageChange: (page: PageId) => void;
+  permissions?: UserPermissions | null;
+  onLogout?: () => void;
 };
 
-const NAV_ITEMS: { id: PageId; icon: typeof BookOpen }[] = [
-  { id: PAGES.CHAT, icon: MessageSquare },
-  { id: PAGES.LLM_WIKI, icon: BookOpen },
-  { id: PAGES.SETTINGS, icon: Settings },
+const ALL_NAV_ITEMS: { id: PageId; icon: typeof BookOpen; permissionKey?: keyof UserPermissions; adminOnly?: boolean; alwaysShow?: boolean; wikiGate?: boolean }[] = [
+  { id: PAGES.CHAT, icon: MessageSquare, permissionKey: 'can_access_chat' },
+  { id: PAGES.LLM_WIKI, icon: BookOpen, wikiGate: true },
+  { id: PAGES.ACCOUNT_MANAGEMENT, icon: Shield, adminOnly: true },
+  { id: PAGES.SETTINGS, icon: Settings, alwaysShow: true },
 ];
 
-export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
+export function Sidebar({ currentPage, onPageChange, permissions, onLogout }: SidebarProps) {
+  const isAdmin = localStorage.getItem('isSuperUser') === 'true';
+  const canManageAccounts = permissions?.can_manage_accounts || isAdmin;
+
+  // Filter nav items by permissions
+  const navItems = ALL_NAV_ITEMS.filter((item) => {
+    if (item.alwaysShow) return true;
+    if (item.adminOnly) return canManageAccounts;
+    if (item.wikiGate) return hasAnyWikiAccess(permissions ?? null, isAdmin);
+    if (!item.permissionKey) return true;
+    if (isAdmin) return true;
+    if (!permissions) return true;
+    return permissions[item.permissionKey] !== false;
+  });
   return (
     <div
       data-sidebar
@@ -39,7 +56,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
         <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           导航
         </p>
-        {NAV_ITEMS.map(({ id, icon: Icon }) => (
+        {navItems.map(({ id, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -57,7 +74,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
         ))}
       </nav>
 
-      <UserInfo />
+      <UserInfo onLogout={onLogout} />
     </div>
   );
 }
