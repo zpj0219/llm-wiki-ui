@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
-  Menu,
   MessageSquare,
   Plus,
   Send,
@@ -638,7 +637,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
         {isMobile && (
           <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30">
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMobileSessionsOpen(true)}>
-              <Menu className="h-4 w-4" />
+              <MessageSquare className="h-4 w-4" />
             </Button>
             <span className="text-xs font-medium truncate">{currentSession?.name ?? '对话'}</span>
             <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" onClick={() => void handleNewSession()}>
