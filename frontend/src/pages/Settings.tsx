@@ -12,7 +12,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Palette; permissionKe
   { id: 'llm-wiki', label: 'LLM-Wiki', icon: BookOpen, permissionKey: 'can_access_settings' },
 ];
 
-export function SettingsPage() {
+export function SettingsPage({ onLogout }: { onLogout?: () => void }) {
   const [tab, setTab] = useState<SettingsTab>('general');
   const permissions = getStoredPermissions();
   const isAdmin = localStorage.getItem('isSuperUser') === 'true';
@@ -51,7 +51,7 @@ export function SettingsPage() {
           </nav>
 
           <div className="flex-1 min-w-0">
-            {tab === 'general' && <GeneralSettingsTab />}
+            {tab === 'general' && <GeneralSettingsTab onLogout={onLogout} />}
             {tab === 'llm-wiki' && <LlmWikiSettingsTab />}
           </div>
         </div>

@@ -183,11 +183,6 @@ export function LoginForm({ className, onLoginSuccess, ...props }: LoginFormProp
                 </Button>
               </div>
 
-              <div className="rounded-lg bg-muted/60 px-3 py-2.5 text-center text-xs text-muted-foreground">
-                演示账号：<span className="font-medium text-foreground">admin</span> / admin123
-                <span className="mx-1.5 text-border">|</span>
-                <span className="font-medium text-foreground">user</span> / user123
-              </div>
             </div>
           </form>
         </CardContent>

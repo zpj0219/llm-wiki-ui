@@ -205,7 +205,7 @@ export default function App() {
             <ChatPage newSessionTrigger={chatNewSessionTrigger} />
           )}
           {currentPage === PAGES.SETTINGS && (
-            <SettingsPage />
+            <SettingsPage onLogout={handleLogout} />
           )}
           {currentPage === PAGES.ACCOUNT_MANAGEMENT && (
             <AccountManagementTab />

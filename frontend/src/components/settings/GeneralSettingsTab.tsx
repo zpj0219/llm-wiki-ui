@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Moon, Sun, Monitor, Bell } from 'lucide-react';
+import { Moon, Sun, Monitor, Bell, LogOut } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -10,10 +10,19 @@ import {
   saveGeneralSettings,
   type GeneralSettings,
 } from '@/services/generalSettings';
+import { notifyAuthExpired } from '@/services/authSession';
 import { cn } from '@/lib/utils';
 
-export function GeneralSettingsTab() {
+export function GeneralSettingsTab({ onLogout }: { onLogout?: () => void }) {
   const [settings, setSettings] = useState<GeneralSettings>(() => getGeneralSettings());
+
+  const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+    } else {
+      notifyAuthExpired({ message: '已退出登录' });
+    }
+  };
 
   const update = (patch: Partial<GeneralSettings>) => {
     const next = { ...settings, ...patch };
@@ -76,6 +85,23 @@ export function GeneralSettingsTab() {
               onCheckedChange={(checked) => update({ showNotifications: checked })}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">账号</CardTitle>
+          <CardDescription>管理当前登录状态</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={handleLogout}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            退出登录
+          </Button>
         </CardContent>
       </Card>
     </div>
