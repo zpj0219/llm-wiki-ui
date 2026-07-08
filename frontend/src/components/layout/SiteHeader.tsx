@@ -115,7 +115,7 @@ export function SiteHeader({
             刷新
           </Button>
         )}
-        {currentPage === PAGES.CHAT && onNewChat && (
+        {currentPage === PAGES.CHAT && onNewChat && !isMobile && (
           <Button variant="outline" size="sm" onClick={onNewChat}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />
             新建对话
