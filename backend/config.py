@@ -1,4 +1,4 @@
-"""应用配置 — 对接 Hermes Agent 知识库与 Gateway"""
+"""应用配置 — 对接 LLM-Wiki 知识库与 Gateway"""
 
 from __future__ import annotations
 

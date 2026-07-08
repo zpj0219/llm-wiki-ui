@@ -36,7 +36,7 @@ def _now_iso() -> str:
 def _require_hermes() -> None:
     if not hermes_enabled():
         raise HermesError(
-            "Hermes Gateway 未配置。请在 .env 中设置 HERMES_API_KEY（与 hermes-data 的 API_SERVER_KEY 一致）"
+            "LLM-Wiki Gateway 未配置。请在 .env 中设置 HERMES_API_KEY（与 llm-wiki 的 API_SERVER_KEY 一致）"
         )
 
 
@@ -220,7 +220,7 @@ def stream_message(
             "type": "step",
             "step": {
                 "id": "__hermes_init__",
-                "label": "Hermes Agent 正在分析问题…",
+                "label": "LLM-Wiki 正在分析问题…",
                 "status": "running",
             },
         }
@@ -323,7 +323,7 @@ async def stream_message_async(
             "type": "step",
             "step": {
                 "id": "__hermes_init__",
-                "label": "Hermes Agent 正在分析问题…",
+                "label": "LLM-Wiki 正在分析问题…",
                 "status": "running",
             },
         }

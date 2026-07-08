@@ -55,7 +55,7 @@ export function hasAnyWikiAccess(permissions: UserPermissions | null, isAdmin: b
 }
 
 /** 产品标语 — 统一文案 */
-export const KARPATHY_WIKI_TAGLINE = 'Hermes Agent · 可复利增长的互链知识库';
+export const KARPATHY_WIKI_TAGLINE = 'LLM-Wiki · 可复利增长的互链知识库';
 
 export const LLM_WIKI_SKILL_REPO = 'https://github.com/sdyckjq-lab/llm-wiki-skill';
 export const KARPATHY_WIKI_GIST =

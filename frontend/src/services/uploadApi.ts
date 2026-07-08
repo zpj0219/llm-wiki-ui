@@ -75,7 +75,7 @@ export async function getUploadConfig(): Promise<{
       originalsBase: ORIGINALS_PREFIX,
       defaultTargetDir: DEFAULT_TARGET,
       knowledgeBaseRoot: res.root ?? '',
-      pipelineNote: '上传后由 Hermes 定时任务：originals → fulltext → wiki ingest → qmd 索引',
+      pipelineNote: '上传后由 LLM-Wiki 定时任务：originals → fulltext → wiki ingest → qmd 索引',
     },
   };
 }

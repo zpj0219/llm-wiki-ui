@@ -652,8 +652,8 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
         )}
         {!chatReady && chatProvider !== '…' && (
           <div className="shrink-0 mx-4 mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-            Hermes Gateway 未连接。请在项目根目录 `.env` 中设置{' '}
-            <code className="text-xs bg-muted px-1 rounded">HERMES_API_KEY</code>（与 hermes-data 的{' '}
+            LLM-Wiki Gateway 未连接。请在项目根目录 `.env` 中设置{' '}
+            <code className="text-xs bg-muted px-1 rounded">HERMES_API_KEY</code>（与 llm-wiki 的{' '}
             <code className="text-xs bg-muted px-1 rounded">API_SERVER_KEY</code> 一致），并确保 Gateway
             运行在 <code className="text-xs bg-muted px-1 rounded">:8642</code>。
           </div>
@@ -671,12 +671,12 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                 <div className="flex size-12 items-center justify-center rounded-xl bg-primary/5 text-primary mb-4">
                   <MessageSquare className="h-6 w-6" />
                 </div>
-                <h2 className="text-lg font-medium mb-1">Hermes Agent 对话</h2>
+                <h2 className="text-lg font-medium mb-1">LLM-Wiki 对话</h2>
                 <p className="text-sm text-muted-foreground max-w-sm">
-                  通过 Hermes Gateway 流式对话（OpenWebUI 兼容 /v1/chat/completions）。
+                  通过 LLM-Wiki 流式对话（OpenWebUI 兼容 /v1/chat/completions）。
                   {chatProvider !== '…' && (
                     <span className="block mt-1 text-xs opacity-80">
-                      后端：{chatReady ? 'Hermes Agent' : 'Hermes 未连接'}
+                      后端：{chatReady ? 'LLM-Wiki' : 'LLM-Wiki 未连接'}
                       {selectedModelId ? ` · 模型 ${selectedModelId}` : ''}
                     </span>
                   )}
@@ -769,7 +769,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                     void handleSend();
                   }
                 }}
-                placeholder={chatReady ? '输入消息…' : '请先配置 Hermes Gateway…'}
+                placeholder={chatReady ? '输入消息…' : '请先配置 LLM-Wiki Gateway…'}
                 disabled={sending || !chatReady}
                 rows={1}
                 className="min-h-[48px] sm:min-h-[52px] max-h-[200px] resize-none overflow-y-auto border-0 bg-transparent px-3 pt-2.5 pb-[46px] sm:px-4 sm:pt-3.5 sm:pb-[52px] text-base sm:text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"

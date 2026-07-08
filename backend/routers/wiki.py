@@ -1,4 +1,4 @@
-"""Wiki API 路由 — 读取 hermes-data 知识库"""
+"""Wiki API 路由 — 读取 llm-wiki 知识库"""
 
 from __future__ import annotations
 

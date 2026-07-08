@@ -33,7 +33,7 @@ export function LlmWikiSettingsTab() {
             知识库路径
           </CardTitle>
           <CardDescription>
-            知识库由后端挂载 hermes-data 卷读取；以下配置与 EdgeModelStudio / llm-wiki-skill 目录约定对齐。
+            知识库由后端挂载 llm-wiki 卷读取；以下配置与 EdgeModelStudio / llm-wiki-skill 目录约定对齐。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

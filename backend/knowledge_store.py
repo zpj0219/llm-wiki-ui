@@ -1,4 +1,4 @@
-"""知识库文件系统读写 — 挂载 hermes-data knowledge-base"""
+"""知识库文件系统读写 — 挂载 llm-wiki knowledge-base"""
 
 from __future__ import annotations
 

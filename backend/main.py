@@ -1,4 +1,4 @@
-"""Hermes Agent 前端 BFF — 知识库 + 对话 Gateway 代理"""
+"""LLM-Wiki 前端 BFF — 知识库 + 对话 Gateway 代理"""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,8 +16,8 @@ init_db()
 _migrate_manifest()  # 启动时一次性扫描文件并计算 MD5
 
 app = FastAPI(
-    title="Hermes Agent 前端 API",
-    description="Hongtai AI Hub — 知识库浏览、原件上传、Hermes 对话",
+    title="LLM-Wiki 前端 API",
+    description="Hongtai AI Hub — 知识库浏览、原件上传、LLM-Wiki 对话",
     version="0.2.0",
 )
 
@@ -39,7 +39,7 @@ app.include_router(upload_router)
 def health():
     return {
         "status": "ok",
-        "service": "hermes-agent-ui-bff",
+        "service": "llm-wiki-ui-bff",
         "knowledgeBaseRoot": str(KNOWLEDGE_BASE_ROOT),
         "databasePath": str(DATABASE_PATH),
         "hermesGateway": HERMES_GATEWAY_URL,

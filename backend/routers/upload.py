@@ -26,7 +26,7 @@ def upload_config(_: dict = Depends(get_current_user)):
         "originalsBase": ORIGINALS_PREFIX,
         "defaultTargetDir": f"{ORIGINALS_PREFIX}/maintenance/manuals",
         "knowledgeBaseRoot": str(kb_root()),
-        "pipelineNote": "上传后由 Hermes 定时任务：originals → fulltext → wiki ingest → qmd 索引",
+        "pipelineNote": "上传后由 LLM-Wiki 定时任务：originals → fulltext → wiki ingest → qmd 索引",
     }
 
 
@@ -77,5 +77,5 @@ async def upload_original(
     return {
         "success": True,
         "relPath": rel_path,
-        "message": "上传成功，等待 Hermes 定时任务处理（originals → fulltext → wiki）",
+        "message": "上传成功，等待 LLM-Wiki 定时任务处理（originals → fulltext → wiki）",
     }
