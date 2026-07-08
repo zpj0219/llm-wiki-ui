@@ -6,7 +6,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { readWikiPage } from '@/services/wikiApi';
 import { WikiMarkdownPreview } from './WikiMarkdownPreview';
 
@@ -69,7 +68,7 @@ export function FilePreviewDialog({ open, relPath, onOpenChange }: FilePreviewDi
   const isBinary = !canPreview(relPath ?? '') || (!loading && !error && content == null);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} className="!max-w-3xl">
+    <Dialog open={open} onOpenChange={onOpenChange} className="!max-w-[90vw]">
       <DialogContent onClose={() => onOpenChange(false)} className="h-[85vh] flex flex-col">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-sm">
@@ -106,17 +105,15 @@ export function FilePreviewDialog({ open, relPath, onOpenChange }: FilePreviewDi
               </div>
             </div>
           ) : (
-            <ScrollArea className="h-full rounded-md border">
+          <div className="h-full rounded-md border overflow-auto p-4">
               {isMarkdown ? (
-                <div className="p-4">
-                  <WikiMarkdownPreview content={content!} onOpenPage={() => {}} />
-                </div>
+                <WikiMarkdownPreview content={content!} onOpenPage={() => {}} />
               ) : (
-                <pre className="text-xs font-mono whitespace-pre-wrap break-all p-4">
+                <pre className="text-xs font-mono whitespace-pre-wrap break-all">
                   {content}
                 </pre>
               )}
-            </ScrollArea>
+            </div>
           )}
         </div>
       </DialogContent>

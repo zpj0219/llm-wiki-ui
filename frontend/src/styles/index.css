@@ -129,9 +129,10 @@
 .prose-wiki ul, .prose-wiki ol { @apply mb-3 pl-6; }
 .prose-wiki ul { @apply list-disc; }
 .prose-wiki ol { @apply list-decimal; }
-.prose-wiki table { @apply w-full border-collapse mb-4 text-sm; }
+.prose-wiki table { @apply border-collapse mb-4 text-sm; }
 .prose-wiki th, .prose-wiki td { @apply border border-border px-3 py-1.5; }
 .prose-wiki th { @apply bg-muted font-medium; }
+.prose-wiki td { word-break: normal; overflow-wrap: normal; white-space: nowrap; }
 .prose-wiki a { @apply text-primary hover:underline; }
 .prose-wiki code { @apply bg-muted px-1 py-0.5 rounded text-xs font-mono; }
 .prose-wiki pre { @apply bg-muted p-3 rounded-md overflow-x-auto mb-3 whitespace-pre-wrap sm:whitespace-pre; touch-action: auto; }

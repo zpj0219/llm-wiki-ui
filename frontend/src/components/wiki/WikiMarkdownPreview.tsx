@@ -220,7 +220,14 @@ export function WikiMarkdownPreview({ content, onOpenPage }: WikiMarkdownPreview
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
         components={{
-          a: ({ href, children, ...props }) => {
+          table: ({ children, ...tableProps }: any) => (
+            <div className="overflow-x-auto -mx-4 px-4">
+              <table {...tableProps} className="w-auto min-w-full border-collapse text-sm">
+                {children}
+              </table>
+            </div>
+          ),
+          a: ({ href, children, ...props }: any) => {
             if (href?.startsWith('wiki://')) {
               const target = decodeURIComponent(href.slice(7));
               return (
