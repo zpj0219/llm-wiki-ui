@@ -135,5 +135,5 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, string> = {
   can_access_wiki_search: '知识库 · 概况',
   can_access_chat: '对话',
   can_access_settings: '设置 · LLM-Wiki 配置',
-  can_manage_accounts: '账号管理（管理员）',
+  can_manage_accounts: '用户管理（管理员）',
 };

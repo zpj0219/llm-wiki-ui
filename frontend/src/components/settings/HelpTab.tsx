@@ -116,8 +116,8 @@ const MODULES: ModuleDetail[] = [
         title: '浏览页面',
         icon: Eye,
         content: [
-          '左侧文件树按 entities（实体）、topics（主题）、sources（来源）三大分类组织知识库页面。',
-          '点击任意页面即可在右侧预览区查看渲染后的 Markdown 内容，支持表格、代码高亮、图片等。',
+          '左侧文件树按 entities（实体）、topics（主题）、sources（摘要）三大分类组织知识库页面。',
+          '点击任意页面即可在右侧预览区查看渲染后的 Markdown 内容，支持表格、代码高亮等。',
           '顶部的面包屑导航展示当前页面在知识库中的路径结构。',
         ],
       },
@@ -159,17 +159,17 @@ const MODULES: ModuleDetail[] = [
         title: '上传文件',
         icon: Upload,
         content: [
-          '点击"上传文件"按钮选择文件，支持 PDF、Word、Excel、PPT、TXT、Markdown、图片、ZIP 等格式。',
-          '上传时可选择目标分类（手册/规程/记录/故障），文件将存入对应目录。',
-          '也可上传至 inbox 目录等待后续分类处理。',
+          '点击"上传文件"或"上传文件夹"按钮选择文件，支持 PDF、Word、Excel、PPT、TXT、Markdown、图片、ZIP 等格式。',
+          '文件将上传至当前浏览的目录下，可在三个分类（文件/全文/暂存）间切换。',
+          '支持拖放文件和文件夹到页面区域直接上传，保留原始目录结构。',
         ],
       },
       {
         title: '处理流水线',
         icon: Zap,
         content: [
-          '上传后的文件进入三阶段自动处理：fulltext（全文提取）→ wiki（结构化）→ qmd（全文索引）。',
-          '每个文件的当前处理阶段可在文件状态中查看。',
+          '上传后的文件进入两阶段自动处理：originals → fulltext（全文提取）→ wiki（实体/主题/摘要提取）。',
+          '每个文件的当前处理阶段（待处理/全文已提取/已生成实体）可在文件状态中查看。',
           '处理由 Hermes 后台定时任务自动完成，无需手动触发。',
         ],
       },
@@ -177,8 +177,8 @@ const MODULES: ModuleDetail[] = [
         title: '浏览与下载',
         icon: Download,
         content: [
-          '文件树按目录结构展示所有已上传原件，支持文件夹展开/收起。',
-          '点击文件名可直接下载原件到本地。',
+          '文件树按目录结构展示所有已上传原件，支持文件夹展开/收起和目录导航。',
+          '点击文件可查看详情，支持下载原件到本地。',
           '部分二进制格式（.docx, .pdf, .png 等）不支持在线预览，需下载查看。',
         ],
       },
@@ -205,7 +205,7 @@ const MODULES: ModuleDetail[] = [
         content: [
           '默认展示整个知识库的全量关系图，所有 entities、topics、sources 节点及其连线。',
           '节点越大表示关联越多（degree 越高），颜色区分节点类型：entities / topics / sources。',
-          '鼠标拖拽可平移画布，滚轮缩放，拖拽节点可调整布局位置。',
+          '鼠标拖拽画布可平移，滚轮缩放，拖拽节点可调整布局位置并固定节点。',
         ],
       },
       {
@@ -217,11 +217,12 @@ const MODULES: ModuleDetail[] = [
         ],
       },
       {
-        title: '交互操作',
+        title: '图表设置',
         icon: MousePointerClick,
         content: [
-          '点击节点选中后可查看节点标签和路径信息。',
-          '支持在设置中调整图谱渲染参数，适配不同性能的设备。',
+          '可通过控制面板调整：连线距离、节点排斥力、节点大小、连线粗细、标签透明度等参数。',
+          '支持隐藏孤立节点、开启动画、生长动画等视觉效果。',
+          '可筛选显示 entities / topics / sources 节点组。',
         ],
       },
     ],
@@ -233,30 +234,29 @@ const MODULES: ModuleDetail[] = [
     color: 'text-rose-500',
     bg: 'bg-rose-500/10',
     permissionKey: 'can_access_wiki_search',
-    desc: '知识库统计概览与全文搜索。查看各类型页面数量、原件处理状态等。',
+    desc: '知识库统计概览，查看各类型页面数量、原件处理状态、重复文件检测等。',
     tips: [
-      '搜索支持中文分词',
-      '可查看知识库整体统计信息',
-      '检测重复文件等异常情况',
-      '按相关度排序搜索结果',
+      '查看知识库整体统计信息',
+      '按分类查看文件分布',
+      '查看原件处理阶段进度',
+      '检测 MD5 重复文件',
     ],
     detailSections: [
       {
         title: '统计概览',
         icon: BarChart3,
         content: [
-          '展示知识库整体数据：原件数量、Wiki 页面数（扁平页 + sources + entities + topics）、全文文档数量。',
-          '显示待处理原件列表及处理阶段分布。',
-          '自动检测 MD5 重复文件并展示重复组。',
+          '展示知识库整体数据：原件数量、Wiki 页面数（平铺页面 + sources + entities + topics）、全文文档数量。',
+          '分布条形图直观展示各分类占比。',
         ],
       },
       {
-        title: '全文搜索',
-        icon: Search,
+        title: '处理管线',
+        icon: Zap,
         content: [
-          '输入关键词搜索知识库全部页面，支持中文分词。',
-          '搜索结果展示标题、内容摘要和匹配分数，按相关度排序。',
-          '点击搜索结果可直接跳转到对应页面。',
+          '展示原件到全文、全文到实体/主题/摘要的两阶段处理进度。',
+          '列出待处理的原始文件路径，以及处理完成率和覆盖率。',
+          '自动检测 MD5 重复文件并展示重复组。',
         ],
       },
     ],
@@ -272,7 +272,7 @@ const MODULES: ModuleDetail[] = [
       '支持浅色/深色/跟随系统三种主题',
       '可自定义 Wiki 子目录名',
       '调整对话上下文注入上限',
-      '切换本机/局域网 API 环境',
+      '管理对话查询的设置项',
     ],
     detailSections: [
       {
@@ -288,7 +288,7 @@ const MODULES: ModuleDetail[] = [
         title: 'LLM-Wiki 配置',
         icon: FileText,
         content: [
-          '知识库路径：自定义 Wiki 子目录名，对齐 llm-wiki-skill 的目录约定。',
+          '知识库路径：自定义 Wiki 子目录名。',
           '上下文上限：控制 AI 对话时注入的 purpose.md / index.md 最大字符数。',
           'Query 只读模式：开启后禁止查询结果写入 wiki/queries/ 目录。',
           '上传登记：开启后上传原件时自动在 index.md 末尾追加文件路径记录。',
@@ -549,11 +549,11 @@ export function HelpTab() {
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Badge variant="secondary" className="text-[10px] h-5 px-1.5">概况</Badge>
-                  统计与全文搜索
+                  知识库统计与处理状态
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5">设置</Badge>
-                  LLM-Wiki 及通用配置
+                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5">设置 · LLM-Wiki 配置</Badge>
+                  LLM-Wiki 及通用设置
                 </span>
               </div>
             </div>
@@ -563,10 +563,10 @@ export function HelpTab() {
             <HelpCircle className="h-5 w-5 shrink-0 text-primary/60 mt-0.5" />
             <div className="text-xs text-muted-foreground space-y-1">
               <p>
-                <strong>如果你需要的模块不可见</strong>，说明当前账号未被授予该模块的访问权限。请联系你的系统管理员（拥有"账号管理"权限的用户）为你开通相应权限。
+                <strong>如果你需要的模块不可见</strong>，说明当前账号未被授予该模块的访问权限。请联系你的系统管理员（拥有"用户管理"权限的用户）为你开通相应权限。
               </p>
               <p>
-                默认情况下，新创建的普通用户拥有除"账号管理"之外的所有权限。管理员可在 <strong>设置 → 账号管理</strong> 中调整每个用户的具体权限。
+                默认情况下，新创建的普通用户拥有除"用户管理"之外的所有权限。管理员可在侧边栏的 <strong>用户管理</strong> 中调整每个用户的具体权限。
               </p>
             </div>
           </div>
