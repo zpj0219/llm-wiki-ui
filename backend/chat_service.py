@@ -18,6 +18,10 @@ from chat_store import (
     update_session_model as store_update_model,
 )
 from config import DEFAULT_CHAT_MODEL, USE_HERMES_CHAT
+from database import get_connection
+
+# 流式回复占位符 — 与前端共享约定。前端检测到此值即展示 loading，后端完成/中断后替换为实际内容。
+_STREAMING_PLACEHOLDER = "__STREAMING_PLACEHOLDER__7f3a2b1c8d4e5f6a9b0c1d2e3f4a5b6c"
 from hermes_client import (
     HermesError,
     chat_completions,
@@ -291,32 +295,55 @@ async def stream_message_async(
 
     now = _now_iso()
     user_msg = {"id": str(uuid.uuid4()), "role": "user", "content": text, "timestamp": now}
+    # 开始前立即持久化：用户消息 + 空占位 assistant，刷新后也能看到
+    placeholder = {
+        "id": str(uuid.uuid4()),
+        "role": "assistant",
+        "content": _STREAMING_PLACEHOLDER,
+        "timestamp": now,
+    }
+    updated = append_messages(
+        user_id, session_id, user_msg, placeholder, rename_from_messages=True,
+    )
+    if not updated:
+        return None
+    assistant_msg_id = placeholder["id"]
     model = session.get("modelId") or DEFAULT_CHAT_MODEL
     api_messages = _build_api_messages(session, text)
 
     async def _iter() -> AsyncIterator[dict[str, Any]]:
         parts: list[str] = []
-        saved = False
+        finalized = False
+        last_flush_len = 0  # 上次写入 DB 的 parts 长度
 
-        def _persist(parts: list[str], *, stopped: bool) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-            full = "".join(parts) if parts else ("（已停止生成）" if stopped else "（无回复内容）")
+        # 内容写入SQLite的辅助函数
+        def _write_content(content: str) -> None:
+            with get_connection() as conn:
+                conn.execute(
+                    "UPDATE chat_messages SET content = ? WHERE id = ?",
+                    (content, assistant_msg_id),
+                )
+                conn.execute(
+                    "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
+                    (_now_iso(), session_id),
+                )
+                conn.commit()
+
+        def _finalize(*, stopped: bool) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+            nonlocal finalized
+            if finalized:
+                return None, None
+            finalized = True
+            full = "".join(parts) if parts else ("（已停止生成）" if stopped else "（对话中断）")
+            _write_content(full)
+            updated_session = store_get(user_id, session_id)
             assistant_msg = {
-                "id": str(uuid.uuid4()),
+                "id": assistant_msg_id,
                 "role": "assistant",
                 "content": full,
                 "timestamp": _now_iso(),
             }
-            updated = append_messages(
-                user_id, session_id, user_msg, assistant_msg, rename_from_messages=True,
-            )
-            return updated, assistant_msg
-
-        def _save_once(*, stopped: bool) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-            nonlocal saved
-            if saved:
-                return None, None
-            saved = True
-            return _persist(parts, stopped=stopped)
+            return updated_session, assistant_msg
 
         yield {"type": "started", "userMessage": user_msg}
         yield {
@@ -335,15 +362,18 @@ async def stream_message_async(
                 if is_cancelled and is_cancelled():
                     break
                 if _is_stopped(session_id):
-                    # 用户点击停止 → 真正中断
                     yield {"type": "stopped", "session": _serialize(session), "assistantMessage": {"id": "", "role": "assistant", "content": "（已停止）", "timestamp": _now_iso()}}
-                    _save_once(stopped=True)
+                    _finalize(stopped=True)
                     return
                 if chunk.get("type") == "delta":
                     delta = str(chunk.get("delta") or "")
                     if delta:
                         parts.append(delta)
                         yield {"type": "delta", "delta": delta}
+                        # 每累积一定字符就将中间内容写入 DB，确保刷新/切换后能看到已生成的部分
+                        if len(parts) - last_flush_len >= 80:
+                            _write_content("".join(parts))
+                            last_flush_len = len(parts)
                 elif chunk.get("type") == "step":
                     step = chunk.get("step")
                     if isinstance(step, dict):
@@ -352,10 +382,9 @@ async def stream_message_async(
             yield {"type": "error", "message": str(e)}
             return
         else:
-            # else 只在 try 块正常完成时执行（无 break / return / exception）
-            # 正常完成 → 在这里持久化 + 发送 done
+            # 正常完成
             stopped = bool(is_cancelled and is_cancelled()) or _is_stopped(session_id)
-            updated, assistant_msg = _save_once(stopped=stopped)
+            updated, assistant_msg = _finalize(stopped=stopped)
             if updated and assistant_msg:
                 yield {
                     "type": "stopped" if stopped else "done",
@@ -363,31 +392,9 @@ async def stream_message_async(
                     "assistantMessage": assistant_msg,
                 }
         finally:
-            # finally 只处理异常断开（break / GeneratorExit）：应急保存 + 后台续收
-            if not saved:
-                stopped = bool(is_cancelled and is_cancelled()) or _is_stopped(session_id)
-                if stopped:
-                    _save_once(stopped=True)
-                elif parts:
-                    # 浏览器刷新/断开 → 先保存已有内容，再后台续收
-                    _save_once(stopped=False)
-                    _active_background_tasks[session_id] = True
-                    async def _background_continue():
-                        try:
-                            async for chunk in chat_completions_stream_async(
-                                api_messages, model, session_key=_session_key(user_id)
-                            ):
-                                if chunk.get("type") == "delta":
-                                    delta = str(chunk.get("delta") or "")
-                                    if delta:
-                                        parts.append(delta)
-                        except Exception:
-                            pass
-                        finally:
-                            _active_background_tasks.pop(session_id, None)
-                            if parts:
-                                update_last_message(session_id, "".join(parts), user_id)
-                    asyncio.create_task(_background_continue())
+            # 刷新/断开等异常退出 → 兜底写入已有内容，并把占位符替换为中断提示文案
+            if not finalized:
+                _finalize(stopped=bool(is_cancelled and is_cancelled()) or _is_stopped(session_id))
 
     return _iter()
 

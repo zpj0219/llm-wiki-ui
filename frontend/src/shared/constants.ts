@@ -57,6 +57,9 @@ export function hasAnyWikiAccess(permissions: UserPermissions | null, isAdmin: b
 /** 产品标语 — 统一文案 */
 export const KARPATHY_WIKI_TAGLINE = 'LLM-Wiki · 可复利增长的互链知识库';
 
+/** 流式回复占位符 — 后端流式开始前写入 DB，完成/中断后替换为实际内容。前端检测到此值即展示 loading */
+export const STREAMING_PLACEHOLDER = '__STREAMING_PLACEHOLDER__7f3a2b1c8d4e5f6a9b0c1d2e3f4a5b6c';
+
 export const LLM_WIKI_SKILL_REPO = 'https://github.com/sdyckjq-lab/llm-wiki-skill';
 export const KARPATHY_WIKI_GIST =
   'https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f';

@@ -31,6 +31,7 @@ import {
 import { getAuthHeaders } from '@/services/authSession';
 import { API_BASE } from '@/services/api';
 import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary, ChatStep } from '@shared/types';
+import { STREAMING_PLACEHOLDER } from '@shared/constants';
 import { useChatHeaderExtras } from '@/contexts/ChatHeaderExtras';
 
 function formatTime(iso: string): string {
@@ -111,7 +112,25 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  /** 正在流式生成中的会话 ID，null 表示没有进行中的流式 */
+  const [streamingSessionId, setStreamingSessionId] = useState<string | null>(null);
+  const sending = streamingSessionId != null;
+
+  /** 消息是否正在流式生成 — 由后端占位符约定驱动，切换会话/刷新后也能正确展示 */
+  const isStreamingMessage = useCallback(
+    (message: ChatMessage, index: number, messages: ChatMessage[]) => {
+      // 传统逻辑：当前正在 SSE 流式中的最后一条
+      if (
+        streamingSessionId === currentSessionId &&
+        message.role === 'assistant' &&
+        index === messages.length - 1
+      )
+        return true;
+      // 约定占位符逻辑：content 为占位符表示后端正在生成，无论是否当前会话
+      return message.role === 'assistant' && message.content === STREAMING_PLACEHOLDER;
+    },
+    [streamingSessionId, currentSessionId],
+  );
   const [error, setError] = useState<string | null>(null);
   const [chatProvider, setChatProvider] = useState<string>('…');
   const [hermesConnected, setHermesConnected] = useState(false);
@@ -276,6 +295,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
 
   const handleSelectSession = async (sessionId: string) => {
     if (sessionId === currentSessionId) return;
+    setStreamingSessionId(null);
     setCurrentSessionId(sessionId);
     setMobileSessionsOpen(false);
     setError(null);
@@ -399,7 +419,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
       ]);
     }
 
-    setSending(true);
+    setStreamingSessionId(sessionId!);
     setError(null);
     setInput('');
     requestAnimationFrame(() => adjustTextareaHeight());
@@ -440,6 +460,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     const abortController = new AbortController();
     abortRef.current = abortController;
 
+    let doneOrStopped = false;
     const streamRes = await streamChatMessageWithAuth(
       sessionId,
       text,
@@ -490,6 +511,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             : prev
         );
       } else if (event.type === 'done' || event.type === 'stopped') {
+        doneOrStopped = true;
         applySessionUpdate(mergeSessionWithSteps(event.session, streamStepsRef.current));
         streamStepsRef.current = [];
       } else if (event.type === 'error') {
@@ -499,10 +521,10 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
       abortController.signal
     );
 
-    setSending(false);
+    setStreamingSessionId(null);
     abortRef.current = null;
 
-    if (streamRes.aborted) {
+    if (streamRes.aborted && !doneOrStopped) {
       await new Promise((resolve) => setTimeout(resolve, 250));
       const detail = await getChatSession(sessionId);
       if (detail.success && detail.session) {
@@ -700,10 +722,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
               </div>
             ) : (
               messages.map((message, index) => {
-                const isStreamingReply =
-                  sending &&
-                  message.role === 'assistant' &&
-                  index === messages.length - 1;
+                const isStreamingReply = isStreamingMessage(message, index, messages);
 
                 return (
                 <div
@@ -740,7 +759,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                             hasContent={Boolean(message.content.trim())}
                           />
                         )}
-                        {isStreamingReply && !message.content && !message.steps?.length ? (
+                        {isStreamingReply && message.content === STREAMING_PLACEHOLDER && !message.steps?.length ? (
                           <p className="text-muted-foreground leading-relaxed">
                             正在生成回复，可能需要一点时间，请稍候…
                           </p>
