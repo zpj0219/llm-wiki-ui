@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS users (
     is_active INTEGER NOT NULL DEFAULT 1,
     is_superuser INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    token_version INTEGER NOT NULL DEFAULT 0
+    token_version INTEGER NOT NULL DEFAULT 0,
+    external_id TEXT,
+    account_source TEXT NOT NULL DEFAULT 'local'
 );
 
 CREATE TABLE IF NOT EXISTS auth_tokens (
@@ -126,6 +128,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # 迁移：为 users 表添加 external_id（Odoo SSO 桥接，可空唯一）
     if "external_id" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
+    # 迁移：为 users 表添加 account_source（已有 external_id 的 Odoo 用户标为 'odoo'，其余默认 'local'）
+    if "account_source" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN account_source TEXT NOT NULL DEFAULT 'local'")
+        # 回填：已有 external_id 以 'odoo:' 开头的用户标记为 odoo 账号
+        conn.execute("UPDATE users SET account_source = 'odoo' WHERE external_id IS NOT NULL AND external_id LIKE 'odoo:%'")
 
 
 def init_db() -> None:

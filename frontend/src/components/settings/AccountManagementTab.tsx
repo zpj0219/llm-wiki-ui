@@ -243,41 +243,41 @@ export function AccountManagementTab() {
                   )}
 
                   <div className="flex items-center gap-1.5 pt-1">
-                    {isOdooMode ? (
+                    {!u.is_superuser && isOdooMode ? (
                       <span className="text-[10px] text-muted-foreground/50 px-1">由 Odoo 管理</span>
                     ) : (
                       <>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-8"
-                        onClick={() => openEdit(u)}
-                      >
-                        <Pencil className="h-3.5 w-3.5 mr-1" />
-                        编辑
-                      </Button>
-                    {!u.is_superuser && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-8"
-                        onClick={() => openPerms(u)}
-                      >
-                        <Settings2 className="h-3.5 w-3.5 mr-1" />
-                        权限
-                      </Button>
-                    )}
-                    {!u.is_superuser && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(u)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    </>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-8"
+                          onClick={() => openEdit(u)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          编辑
+                        </Button>
+                        {!u.is_superuser && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 h-8"
+                            onClick={() => openPerms(u)}
+                          >
+                            <Settings2 className="h-3.5 w-3.5 mr-1" />
+                            权限
+                          </Button>
+                        )}
+                        {!u.is_superuser && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-destructive hover:text-destructive"
+                            onClick={() => setDeleteTarget(u)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

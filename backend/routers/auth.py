@@ -38,6 +38,7 @@ class CreateUserRequest(BaseModel):
     email: str | None = None
     full_name: str | None = None
     is_active: bool = True
+    account_source: str | None = None
 
 
 class UpdateUserRequest(BaseModel):
@@ -98,6 +99,11 @@ def login(body: LoginRequest):
             "success": False,
             "errorMessage": "账号已被禁用，请联系管理员",
         }
+    if user == "wrong_source":
+        return {
+            "success": False,
+            "errorMessage": "当前系统为 Odoo SSO 模式，请通过 Odoo 菜单访问",
+        }
     if not user:
         return {
             "success": False,
@@ -117,6 +123,7 @@ def login(body: LoginRequest):
                 "is_active": user.get("is_active", True),
                 "is_superuser": user.get("is_superuser", False),
                 "created_at": user.get("created_at"),
+                "account_source": user.get("account_source", "local"),
             },
             "permissions": permissions,
             "access_token": tokens["access_token"],
@@ -221,6 +228,7 @@ def odoo_callback(token: str = ""):
                 "is_active": user.get("is_active", True),
                 "is_superuser": user.get("is_superuser", False),
                 "created_at": user.get("created_at"),
+                "account_source": user.get("account_source", "local"),
                 "external_id": user.get("external_id"),
             },
             "permissions": permissions,
@@ -256,6 +264,7 @@ def api_create_user(body: CreateUserRequest, admin: dict = Depends(require_admin
             full_name=body.full_name,
             is_active=body.is_active,
             is_superuser=False,  # 新建用户默认为非管理员
+            account_source=body.account_source or "local",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

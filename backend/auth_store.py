@@ -45,7 +45,9 @@ def _check_is_admin(user_id: int) -> bool:
 
 
 def authenticate(username: str, password: str) -> dict[str, Any] | None | str:
-    """返回用户 dict、None（凭据错误）或 'disabled'（账号已禁用）。"""
+    """返回用户 dict、None（凭据错误）、'disabled'（账号已禁用）或 'wrong_source'（非当前模式账号）。"""
+    from config import USER_MANAGEMENT_MODE
+
     with get_connection() as conn:
         row = conn.execute(
             "SELECT * FROM users WHERE username = ?",
@@ -55,6 +57,11 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None | str:
         return None
     if not row["is_active"]:
         return "disabled"
+    # 管理员任何模式都通用，普通用户只能在对应模式下登录
+    if not row["is_superuser"]:
+        user_source = row["account_source"] or "local"
+        if user_source != USER_MANAGEMENT_MODE:
+            return "wrong_source"
     return dict(row)
 
 
@@ -198,6 +205,7 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
         "is_superuser": bool(user.get("is_superuser", False)),
         "created_at": user.get("created_at"),
         "external_id": user.get("external_id"),
+        "account_source": user.get("account_source", "local"),
     }
 
 
@@ -236,10 +244,16 @@ def set_user_permissions(user_id: int, permissions: dict[str, bool]) -> dict[str
 
 
 def get_all_users() -> list[dict[str, Any]]:
-    """列出所有用户（含权限）。仅管理员调用。"""
+    """列出当前模式下的用户 + 所有管理员。仅管理员调用。"""
+    from config import USER_MANAGEMENT_MODE
+
     with get_connection() as conn:
         users = conn.execute(
-            "SELECT id, username, email, full_name, is_active, is_superuser, created_at FROM users ORDER BY id"
+            """SELECT id, username, email, full_name, is_active, is_superuser, created_at, external_id, account_source
+            FROM users
+            WHERE is_superuser = 1 OR account_source = ?
+            ORDER BY id""",
+            (USER_MANAGEMENT_MODE,),
         ).fetchall()
     result: list[dict[str, Any]] = []
     for u in users:
@@ -258,6 +272,7 @@ def create_user(
     is_active: bool = True,
     is_superuser: bool = False,
     permissions: dict[str, bool] | None = None,
+    account_source: str = "local",
 ) -> dict[str, Any]:
     """创建新用户，返回用户 dict。"""
     from datetime import datetime, timezone
@@ -277,10 +292,10 @@ def create_user(
             raise ValueError(f"用户名已存在: {username}")
 
         conn.execute(
-            """INSERT INTO users (username, password_hash, email, full_name, is_active, is_superuser, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO users (username, password_hash, email, full_name, is_active, is_superuser, created_at, account_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (username, hash_password(password), email or None, full_name or None,
-             int(is_active), int(is_superuser), now),
+             int(is_active), int(is_superuser), now, account_source),
         )
         conn.commit()
         user = conn.execute(

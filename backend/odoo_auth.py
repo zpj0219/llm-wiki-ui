@@ -89,8 +89,8 @@ def find_or_create_odoo_user(
 
         conn.execute(
             """INSERT INTO users
-            (username, password_hash, email, full_name, is_active, is_superuser, created_at, external_id)
-            VALUES (?, ?, ?, ?, 1, 0, ?, ?)""",
+            (username, password_hash, email, full_name, is_active, is_superuser, created_at, external_id, account_source)
+            VALUES (?, ?, ?, ?, 1, 0, ?, ?, 'odoo')""",
             (username, unusable_pw, email, name or login, now, external_id),
         )
         conn.commit()
