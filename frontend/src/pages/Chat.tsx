@@ -754,13 +754,16 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                         {message.steps && message.steps.length > 0 && (
                           <ChatThinkingSteps
                             steps={message.steps}
-                            hasContent={Boolean(message.content.trim())}
+                            hasContent={message.content !== STREAMING_PLACEHOLDER && Boolean(message.content.trim())}
+                            isStreaming={isStreamingReply}
                           />
                         )}
-                        {isStreamingReply && message.content === STREAMING_PLACEHOLDER && !message.steps?.length ? (
-                          <p className="text-muted-foreground leading-relaxed">
-                            正在生成回复，可能需要一点时间，请稍候…
-                          </p>
+                        {message.content === STREAMING_PLACEHOLDER ? (
+                          !message.steps?.length && (
+                            <p className="text-muted-foreground leading-relaxed">
+                              正在生成回复，可能需要一点时间，请稍候…
+                            </p>
+                          )
                         ) : message.content ? (
                           <ChatMarkdown content={message.content} />
                         ) : null}

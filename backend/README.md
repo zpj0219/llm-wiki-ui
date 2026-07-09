@@ -8,130 +8,112 @@ FastAPI BFF（Backend For Frontend），为 React 前端提供知识库管理、
 backend/
 ├── main.py               # FastAPI 入口，CORS，路由注册
 ├── config.py             # 环境变量 / 配置常量
-├── database.py           # SQLite 数据库初始化（用户表、token 表、chat 会话表）
-├── auth_store.py         # 用户登录 / token 校验
-├── chat_service.py       # 对话业务逻辑：会话 CRUD、消息收发、SSE 流
+├── database.py           # SQLite 初始化（users, auth_tokens, chat_sessions, chat_messages, user_permissions）
+├── auth_store.py         # 用户登录 / token 校验 / 权限管理
+├── chat_service.py       # 对话业务逻辑：会话 CRUD、消息收发、SSE 流式
 ├── chat_store.py         # 对话持久层：SQLite 读写 chat sessions/messages
 ├── hermes_client.py      # Hermes Gateway HTTP 客户端（/v1/chat/completions）
 ├── knowledge_store.py    # 知识库文件系统读写 + 统计 + 重复检测
 ├── wiki_index.py         # Wiki 页面反向链接索引
 ├── routers/
-│   ├── auth.py           # /api/auth/* 登录/登出
+│   ├── auth.py           # /api/auth/* 登录/登出/token 刷新/用户管理
 │   ├── chat.py           # /api/chat/* 对话 API + SSE 流式
 │   ├── upload.py         # /api/upload/* 原件上传
-│   └── wiki.py           # /api/wiki/* 知识库读写
-└── uploads/              # 上传文件暂存目录
+│   └── wiki.py           # /api/wiki/* 知识库浏览/编辑/搜索/图谱/下载
+└── data/
+    └── app.db            # SQLite 数据库文件
 ```
 
-## 各模块实现思路
+## 核心实现
 
-### main.py — 应用入口
+### main.py
 
-- 初始化知识库目录 `ensure_kb_root()`
-- 初始化 SQLite 数据库 `init_db()`
-- 启动时迁移上传清单 `_migrate_manifest()`（扫描已有文件计算 MD5）
-- 注册 CORS 中间件和 4 个子路由
-- 提供 `/api/health` 健康检查
+- 启动时初始化知识库目录、SQLite 数据库、上传清单迁移
+- 注册 CORS 中间件（允许所有来源）
+- 挂载 4 个子路由：auth / chat / upload / wiki
+- `/api/health` 健康检查，返回知识库路径和 Hermes 连接状态
 
-### hermes_client.py — Hermes 网关客户端
+### config.py
+
+- `KNOWLEDGE_BASE_ROOT`：知识库文件系统路径，默认指向 `hermes-data/data/home/Documents/knowledge-base`
+- `DATABASE_PATH`：SQLite 路径，默认 `backend/data/app.db`
+- `HERMES_GATEWAY_URL`：Hermes 网关地址，默认 `http://localhost:8642`
+- `HERMES_API_KEY`：与 hermes-data 中 `API_SERVER_KEY` 一致
+- `DEFAULT_CHAT_MODEL`：默认模型 ID，默认 `hermes-agent`
+- `USE_HERMES_CHAT`：auto/true/false 控制是否启用对话功能
+
+### database.py
+
+数据库表结构：
+- `users`：用户名、密码哈希（PBKDF2 SHA256）、邮箱、是否激活、是否超级管理员
+- `auth_tokens`：token + user_id + 过期时间 + token_version（密码修改后旧 token 失效）
+- `chat_sessions`：会话 id、user_id、名称、模型、创建/更新时间
+- `chat_messages`：消息 id、session_id、role、content、timestamp、sort_order
+- `user_permissions`：7 项布尔权限字段
+
+种子数据：`admin/admin123`（管理员）、`user/user123`（普通用户）。
+
+### auth_store.py
+
+- 登录：验证密码 → 生成 access_token（24h）+ refresh_token（7d），存入 auth_tokens 表
+- 登出：清除当前 token，广播 `token_version` 使该用户所有旧 token 失效
+- 刷新：refresh_token → 新 access_token，旧 token 删除
+- 权限：每个用户对应 `user_permissions` 行，超级管理员绕过所有权限检查
+- 修改密码后自增 `token_version`，强制所有旧 token 失效
+
+### hermes_client.py
 
 与 Hermes Gateway 通信的唯一通道：
-- **chat_completions()** — 非流式对话（`POST /v1/chat/completions` stream=false）
-- **chat_completions_stream()** — SSE 流式对话（同步版，供 CLI/脚本使用）
-- **chat_completions_stream_async()** — SSE 流式对话（异步版，供 FastAPI 端点使用）
-- **list_models()** — 获取可用模型列表
-- **health_check()** — 网关健康探测
+- `chat_completions()` — 非流式对话（stream=false）
+- `chat_completions_stream()` — SSE 流式对话（同步版）
+- `chat_completions_stream_async()` — SSE 流式对话（异步版，FastAPI 使用）
+- `list_models()` — 获取可用模型列表
+- `health_check()` — 网关健康探测
 
-通信协议：OpenAI 兼容的 `/v1/chat/completions`，Authorization Bearer token。流式事件类型：
-- `assistant.delta` / `message.delta` → 文本增量
-- `tool.started` / `tool.completed` → 思考步骤
-- 未识别的 SSE 事件 → 尝试从 `choices[0].delta.content` 提取文本
+通信协议：OpenAI 兼容的 `/v1/chat/completions`，Authorization Bearer token。
 
-### chat_service.py — 对话服务
+### chat_service.py
 
-**会话管理**：基于 SQLite 的会话 CRUD，每个用户独立存储。
-- Session 绑定 `X-Hermes-Session-Key` 头以实现 Hermes 侧会话连续性
-- 自动从首条消息提取会话标题（截取前 20 字符）
+**会话管理**：
+- 每个用户独立存储会话，支持 CRUD + 清空 + 模型切换
+- 会话名称自动从首条用户消息截取（前 24 字符）
 
-**流式对话**：
-- `stream_message()` — 同步版，使用 `httpx.Client.stream()` + `resp.iter_lines()`
-- `stream_message_async()` — 异步版，使用 `httpx.AsyncClient.stream()` + `resp.aiter_lines()`
+**流式对话架构**：
 
-**审批支持**：当 Hermes 回复包含"批准/确认/授权"等关键词时，前端显示 `/approve once` `/approve deny` 快捷按钮。点击后以文本消息形式发送斜杠命令，由 Hermes 内部解析执行。
+使用异步版 `stream_message_async()`，`async for` 迭代 Hermes SSE 流，每次迭代 `await` 归还控制权给事件循环，避免阻塞其他请求。
 
-#### 异步流式架构（修复对话阻塞问题）
-
-**问题根因**：早期 `routers/chat.py` 的 SSE 端点 `async def generate()` 由 Starlette 直接在**事件循环线程**中调用 `__anext__()` 执行。但内部使用了 `for event in sync_iterator`（没有 `await`），最终阻塞在 `httpx.Client.stream().iter_lines()` → `socket.recv()` 上等 Gateway 响应。uvicorn 单 worker 只有一个事件循环线程，一旦阻塞，**所有异步请求失去调度者，全部卡死**——即使线程池还空闲 39 个线程也没有任何作用，因为没有人去调度它们。
+**流式中间写入与占位符约定**：
 
 ```
-StreamingResponse(async def generate())
-    │  Starlette 在事件循环线程里调用 __anext__()
-    ▼
-for event in sync_iterator   ← 没有 await！阻塞 __next__()
-    │
-    ▼
-httpx.Client.stream().recv() ← 阻塞等 Gateway
-    │
-    ▼
-事件循环线程死掉 → 全站阻塞 ❌
+发送消息 → 立即写入 DB：用户消息 + 占位符 assistant（__STREAMING_PLACEHOLDER__...）
+         → 流式 delta 到，每累积 ~80 字符增量更新 DB
+         → 完成/停止/断连 → 替换占位符为最终内容
 ```
 
-**修复方式**：三处 `for` → `async for`（commit `96fa0cc`）：
+前端检测到占位符即展示 loading 状态，与当前是否正在 SSE 流式无关，解决刷新页面、切换会话后 loading 丢失的问题。
 
-| 层 | 文件 | 改动 |
-|---|------|------|
-| 客户端 | `hermes_client.py` | 新增 `chat_completions_stream_async()`，`httpx.AsyncClient` + `aiter_lines()` |
-| 服务 | `chat_service.py` | 新增 `stream_message_async()`，返回 `AsyncIterator` |
-| 路由 | `routers/chat.py` | `stream_message` → `stream_message_async`，`for` → `async for` |
+**停止 vs 断连**：
+- 用户点击停止 → `/stop` 端点设内存标记 → 中断流式，写入已收到内容
+- 浏览器刷新断开 → `finally` 块兜底写入已有内容
 
-每次 `async for` 迭代都是 `await`，控制权归还事件循环，其他请求得以正常调度：
+### chat_store.py
 
-```
-StreamingResponse(async def generate())
-    │
-    ▼
-async for event in async_iterator   ← await！
-    │  每轮迭代 await，事件循环空闲
-    ▼
-httpx.AsyncClient.arecv()  ← 异步 await，不阻塞
-    │
-    ▼
-事件循环自由 → 其他请求正常处理 ✅
-```
+- `append_messages()`：批量插入用户 + assistant 消息，同时更新会话名称和 `updated_at`
+- `update_last_message()`：用于流式中间阶段更新 assistant 消息内容
+- 消息按 `sort_order` 排列，保证顺序
 
-**停止 vs 断连的区分**：
-- 用户点击停止 → `_session_stop_flags` 内存标记 → 立即中断，保存已收到内容
-- 浏览器刷新断开 → `request.is_disconnected()` → 先保存已有内容，`asyncio.create_task` 后台继续收完整回复，最后 `update_last_message()` 补写 DB
+### knowledge_store.py
 
-同步版 `stream_message()` 保留不删，供非 FastAPI 场景（CLI 脚本、定时任务）使用。
-
-### chat_store.py — 对话持久层
-
-SQLite 表结构：
-- `chat_sessions` — 会话元数据（id, user_id, name, model_id）
-- `chat_messages` — 消息记录（id, session_id, role, content, timestamp）
-- 消息以 JSON 数组形式关联查询，按时间升序排列
-
-### knowledge_store.py — 知识库存储
-
-**文件系统操作**：
-- 遍历 `knowledge-base/` 目录树，解析 `raw/` 和 `wiki/` 子目录
+文件系统操作：
 - `raw/originals/` — 原始上传文件
 - `raw/fulltext/` — 全文索引
-- `wiki/entities/` `wiki/topics/` `wiki/sources/` — Wiki 实体/主题/来源
+- `raw/inbox/` — 暂存区
+- `wiki/entities/` `wiki/topics/` `wiki/sources/` — Wiki 分类页面
 
-**文件上传去重**（SQLite manifest）：
-- `.upload_manifest.db` 记录每个文件的 MD5 + 大小 + 上传时间
-- 上传时先计算 MD5，查 manifest 是否存在，重复则拒绝
-- 首次启动自动扫描已有文件补录 manifest
+文件上传去重：SQLite manifest（`.upload_manifest.db`）记录 MD5 哈希，重复文件拒绝上传并返回已存在路径。
 
-**统计接口**（`get_stats()`）：
-- 按目录统计文件数量
-- `originalsPending`：原始文件中尚未生成全文索引的数量
-- 三层匹配判断"已处理"：① 全路径 stem 精确匹配 ② MD5 内容去重（重复文件） ③ 仅文件名匹配（跨目录）
+统计接口 `get_stats()`：按目录统计文件数量、未处理文件列表、MD5 重复文件组。
 
-### 审批追赶方案（未启用）
+### wiki_index.py
 
-Hermes 的 `/v1/runs` API 理论上支持结构化审批事件（`approval.request` SSE），但由于 execute_code 在 sandbox 线程执行时丢失审批上下文（`notify_cb = None`），审批回调不稳定。
-
-hermes-webui 的解决方案是把 Hermes 源码作为 Python 库引入同进程，直接调用 `tools.approval.resolve_gateway_approval()`，跳过 HTTP 边界。llm-wiki-ui 作为独立进程无法做到。当前回退为文本斜杠命令 `/approve once` 方案。
+反向链接索引：扫描 wiki/ 下所有 Markdown 文件，解析 `[[wikilink]]` 和 `[text](path)` 语法，建立出链/入链映射。支持局部图聚焦和全量图谱数据。

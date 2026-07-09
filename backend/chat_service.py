@@ -20,7 +20,8 @@ from chat_store import (
 from config import DEFAULT_CHAT_MODEL, USE_HERMES_CHAT
 from database import get_connection
 
-# 流式回复占位符 — 与前端共享约定。前端检测到此值即展示 loading，后端完成/中断后替换为实际内容。
+# 流式回复占位符 — 与前端 shared/constants.ts 共享约定。
+# 前端检测到此值即展示 loading，后端完成/中断后替换为实际内容。
 _STREAMING_PLACEHOLDER = "__STREAMING_PLACEHOLDER__7f3a2b1c8d4e5f6a9b0c1d2e3f4a5b6c"
 from hermes_client import (
     HermesError,

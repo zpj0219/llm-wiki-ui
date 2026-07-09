@@ -7,6 +7,8 @@ type ChatThinkingStepsProps = {
   steps: ChatStep[];
   /** 助手正文是否已有输出 */
   hasContent?: boolean;
+  /** 是否仍在流式生成中 — 为 true 时显示模型计时 */
+  isStreaming?: boolean;
   className?: string;
 };
 
@@ -19,6 +21,15 @@ function formatDurationMs(ms: number): string {
   return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
 }
 
+/** 仅用于"模型处理计时"文案：显示秒数，不足1秒也显示 */
+function formatElapsedSec(ms: number): string {
+  if (ms < 1000) return `${(ms / 1000).toFixed(1)}秒`;
+  if (ms < 60000) return `${Math.round(ms / 1000)}秒`;
+  const min = Math.floor(ms / 60000);
+  const sec = Math.round((ms % 60000) / 1000);
+  return sec > 0 ? `${min}分${sec}秒` : `${min}分`;
+}
+
 function stepElapsedMs(step: ChatStep, now: number): number | null {
   if (step.durationMs != null) return step.durationMs;
   if (step.startedAt == null) return null;
@@ -26,24 +37,33 @@ function stepElapsedMs(step: ChatStep, now: number): number | null {
   return Math.max(0, end - step.startedAt);
 }
 
-export function ChatThinkingSteps({ steps, hasContent = false, className }: ChatThinkingStepsProps) {
+// 模型处理开始时间：取所有步骤中最小的 startedAt，没有时用 now
+function modelStartMs(steps: ChatStep[], now: number): number {
+  const times = steps
+    .map((s) => s.startedAt)
+    .filter((t): t is number => t != null);
+  return times.length > 0 ? Math.min(...times) : now;
+}
+
+export function ChatThinkingSteps({ steps, hasContent = false, isStreaming = false, className }: ChatThinkingStepsProps) {
   const hasRunning = steps.some((s) => s.status === 'running');
+  const showTimer = isStreaming || hasRunning;
   const [expanded, setExpanded] = useState(!hasContent);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (hasContent) {
       setExpanded(false);
-    } else if (hasRunning) {
+    } else if (showTimer) {
       setExpanded(true);
     }
-  }, [hasContent, hasRunning]);
+  }, [hasContent, showTimer]);
 
   useEffect(() => {
-    if (!hasRunning) return;
+    if (!showTimer) return;
     const id = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(id);
-  }, [hasRunning]);
+  }, [showTimer]);
 
   if (steps.length === 0) return null;
 
@@ -51,6 +71,10 @@ export function ChatThinkingSteps({ steps, hasContent = false, className }: Chat
     const elapsed = stepElapsedMs(step, now);
     return elapsed != null ? sum + elapsed : sum;
   }, 0);
+
+  // 模型处理计时：从第一步开始到当前时间（loading 中持续增长；完成后停留在最终耗时）
+  const modelStart = modelStartMs(steps, now);
+  const modelElapsed = Math.max(0, now - modelStart);
 
   return (
     <div className={cn('mb-2 rounded-lg border border-border/60 bg-background/40', className)}>
@@ -65,15 +89,17 @@ export function ChatThinkingSteps({ steps, hasContent = false, className }: Chat
           <ChevronRight className="h-3.5 w-3.5 shrink-0" />
         )}
         <span className="font-medium">
-          {hasRunning ? '正在处理' : '处理过程'}
-          <span className="ml-1 opacity-70">({steps.length} 步)</span>
+          {showTimer ? '模型处理中' : '处理过程'}
+          {showTimer && modelElapsed > 0 && (
+            <span className="ml-1 opacity-70">({formatElapsedSec(modelElapsed)})</span>
+          )}
         </span>
         {totalMs > 0 && (
           <span className="ml-auto tabular-nums text-[10px] opacity-60 shrink-0">
             {formatDurationMs(totalMs)}
           </span>
         )}
-        {hasRunning && (
+        {showTimer && (
           <Loader2
             className={cn(
               'h-3 w-3 animate-spin shrink-0 opacity-70',
@@ -109,7 +135,7 @@ export function ChatThinkingSteps({ steps, hasContent = false, className }: Chat
                       {formatDurationMs(elapsed)}
                     </span>
                   )}
-                  {step.status === 'running' && (
+                  {step.status === 'running' && showTimer && (
                     <Loader2 className="h-3 w-3 animate-spin opacity-60" />
                   )}
                 </span>
