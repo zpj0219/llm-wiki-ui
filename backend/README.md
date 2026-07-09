@@ -10,13 +10,14 @@ backend/
 ├── config.py             # 环境变量 / 配置常量
 ├── database.py           # SQLite 初始化（users, auth_tokens, chat_sessions, chat_messages, user_permissions）
 ├── auth_store.py         # 用户登录 / token 校验 / 权限管理
+├── odoo_auth.py          # Odoo JWT SSO 桥接：验证 JWT、查找或创建用户
 ├── chat_service.py       # 对话业务逻辑：会话 CRUD、消息收发、SSE 流式
 ├── chat_store.py         # 对话持久层：SQLite 读写 chat sessions/messages
 ├── hermes_client.py      # Hermes Gateway HTTP 客户端（/v1/chat/completions）
 ├── knowledge_store.py    # 知识库文件系统读写 + 统计 + 重复检测
 ├── wiki_index.py         # Wiki 页面反向链接索引
 ├── routers/
-│   ├── auth.py           # /api/auth/* 登录/登出/token 刷新/用户管理
+│   ├── auth.py           # /api/auth/* 登录/登出/token 刷新/用户管理/Odoo SSO 回调
 │   ├── chat.py           # /api/chat/* 对话 API + SSE 流式
 │   ├── upload.py         # /api/upload/* 原件上传
 │   └── wiki.py           # /api/wiki/* 知识库浏览/编辑/搜索/图谱/下载
@@ -41,11 +42,13 @@ backend/
 - `HERMES_API_KEY`：与 hermes-data 中 `API_SERVER_KEY` 一致
 - `DEFAULT_CHAT_MODEL`：默认模型 ID，默认 `hermes-agent`
 - `USE_HERMES_CHAT`：auto/true/false 控制是否启用对话功能
+- `ODOO_SSO_JWT_SECRET`：与 Odoo 自定义模块共享的 HS256 密钥，非空即启用 Odoo SSO
+- `USER_MANAGEMENT_MODE`：`local`（管理员手动管理用户）或 `odoo`（Odoo SSO 统一管理，用户管理只读）
 
 ### database.py
 
 数据库表结构：
-- `users`：用户名、密码哈希（PBKDF2 SHA256）、邮箱、是否激活、是否超级管理员
+- `users`：用户名、密码哈希（PBKDF2 SHA256）、邮箱、是否激活、是否超级管理员、`account_source`（`local`/`odoo`）、`external_id`（Odoo 用户关联）
 - `auth_tokens`：token + user_id + 过期时间 + token_version（密码修改后旧 token 失效）
 - `chat_sessions`：会话 id、user_id、名称、模型、创建/更新时间
 - `chat_messages`：消息 id、session_id、role、content、timestamp、sort_order
@@ -55,11 +58,31 @@ backend/
 
 ### auth_store.py
 
-- 登录：验证密码 → 生成 access_token（24h）+ refresh_token（7d），存入 auth_tokens 表
+- 登录：验证密码 → 校验 `account_source`（管理员通用，普通用户只能同模式登录）→ 生成 access_token（1h）+ refresh_token，存入 auth_tokens 表
 - 登出：清除当前 token，广播 `token_version` 使该用户所有旧 token 失效
 - 刷新：refresh_token → 新 access_token，旧 token 删除
 - 权限：每个用户对应 `user_permissions` 行，超级管理员绕过所有权限检查
 - 修改密码后自增 `token_version`，强制所有旧 token 失效
+- 用户列表：按当前 `USER_MANAGEMENT_MODE` + 管理员过滤，只展示同模式用户及所有管理员
+
+### odoo_auth.py
+
+Odoo JWT SSO 桥接模块：
+- `verify_odoo_jwt(token)` — 使用 HS256 验证 Odoo 签发的短期 JWT，校验 `sub` 和 `exp` 字段
+- `find_or_create_odoo_user(sub, login, email, name)` — 按 `external_id = odoo:{sub}` 查找或创建用户，新建用户 `account_source = 'odoo'`，密码随机不可用（禁止本地登录），用户名格式 `odoo_{sub}`
+- `odoo_sso_enabled()` — 检查 `ODOO_SSO_JWT_SECRET` 是否已配置
+
+### 用户管理模式
+
+`USER_MANAGEMENT_MODE` 控制两种运行模式：
+
+| 模式 | 用户来源 | 登录方式 | 用户管理 |
+|------|---------|---------|---------|
+| `local` | 管理员后台创建 | 用户名 + 密码 | 完整 CRUD + 权限配置 |
+| `odoo` | Odoo SSO 自动创建 | Odoo 跳转（JWT） | 管理员只读查看，不可操作 |
+
+`GET /api/auth/config` 返回当前模式，前端据此调整 UI（隐藏/显示用户管理入口、切换帮助内容等）。
+`GET /api/auth/odoo/callback?token=...` 仅在 odoo 模式下可用，验证 JWT → upsert 用户 → 签发 token。
 
 ### hermes_client.py
 
@@ -117,3 +140,10 @@ backend/
 ### wiki_index.py
 
 反向链接索引：扫描 wiki/ 下所有 Markdown 文件，解析 `[[wikilink]]` 和 `[text](path)` 语法，建立出链/入链映射。支持局部图聚焦和全量图谱数据。
+
+## 新增接口速查
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/auth/config` | 返回当前 `userManagementMode`（`local` / `odoo`） |
+| `GET /api/auth/odoo/callback?token=...` | Odoo JWT SSO 回调（仅 odoo 模式可用） |

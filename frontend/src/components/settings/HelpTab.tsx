@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   BookOpen,
   MessageSquare,
@@ -26,6 +26,7 @@ import {
   Globe,
   Palette,
   ListChecks,
+  LogIn,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -318,9 +319,22 @@ function hasAccess(
 
 export function HelpTab() {
   const [detailModule, setDetailModule] = useState<ModuleDetail | null>(null);
+  const [isOdooMode, setIsOdooMode] = useState(false);
 
   const perms = getStoredPermissions() as UserPermissions | null;
   const isAdmin = localStorage.getItem('isSuperUser') === 'true';
+
+  // 获取用户管理模式
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_BASE ?? ''}/api/auth/config`)
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => setIsOdooMode(((d as any)?.userManagementMode ?? 'local') === 'odoo'))
+      .catch(() => {});
+  }, []);
+
+  if (isOdooMode) {
+    return <OdooModeHelp />;
+  }
 
   // 详情页
   if (detailModule) {
@@ -567,6 +581,284 @@ export function HelpTab() {
               </p>
               <p>
                 默认情况下，新创建的普通用户拥有除"用户管理"之外的所有权限。管理员可在侧边栏的 <strong>用户管理</strong> 中调整每个用户的具体权限。
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="text-center pb-4">
+        <p className="text-[11px] text-muted-foreground">
+          如遇问题或需要更多帮助，请联系系统管理员
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Odoo SSO 模式专属帮助 ────────────────────────────────────────────
+
+function OdooModeHelp() {
+  const [detailModule, setDetailModule] = useState<ModuleDetail | null>(null);
+
+  const perms = getStoredPermissions() as UserPermissions | null;
+  const isAdmin = localStorage.getItem('isSuperUser') === 'true';
+
+  // 详情页 — 复用与 local 模式相同的 MODULES 数据
+  if (detailModule) {
+    return (
+      <div className="space-y-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 -ml-2"
+          onClick={() => setDetailModule(null)}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          返回模块列表
+        </Button>
+
+        {/* 模块标题 */}
+        <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary/5 via-primary/3 to-background">
+          <CardContent className="p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row items-start gap-5">
+              <div className={`flex size-14 shrink-0 items-center justify-center rounded-2xl ${detailModule.bg} ${detailModule.color}`}>
+                <detailModule.icon className="h-7 w-7" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-xl font-bold tracking-tight">{detailModule.title}</h2>
+                <p className="text-sm text-muted-foreground leading-relaxed">{detailModule.desc}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 详细介绍 */}
+        {detailModule.detailSections.map((section) => {
+          const SecIcon = section.icon;
+          return (
+            <Card key={section.title}>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <SecIcon className="h-4 w-4 text-primary/70" />
+                  {section.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2.5">
+                  {Array.isArray(section.content) ? (
+                    section.content.map((text, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground leading-relaxed">
+                        <span className="mt-2 block size-1.5 shrink-0 rounded-full bg-primary/40" />
+                        {text}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="flex items-start gap-2.5 text-sm text-muted-foreground leading-relaxed">
+                      <span className="mt-2 block size-1.5 shrink-0 rounded-full bg-primary/40" />
+                      {section.content}
+                    </li>
+                  )}
+                </ul>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Hero */}
+      <Card className="overflow-hidden border-0 bg-gradient-to-br from-primary/5 via-primary/3 to-background">
+        <CardContent className="p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row items-start gap-5">
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <BookOpen className="h-7 w-7" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold tracking-tight">LLM-Wiki 使用指南</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
+                LLM-Wiki 是一套<strong>可复利增长的互链知识库系统</strong>，帮助你将散落的技术文档、运维手册、故障记录等原件，
+                自动转化为结构化、可检索、可对话的智能知识库。当前为 <strong>Odoo SSO 模式</strong>，账号通过 Odoo 统一管理。
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 登录方式说明 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <LogIn className="h-4 w-4 text-blue-500" />
+            如何访问
+          </CardTitle>
+          <CardDescription>通过 Odoo 菜单跳转登录</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+            <p>
+              本系统与 <strong>Odoo 企业平台</strong> 集成，请通过 Odoo 菜单中的 <strong>LLM-Wiki</strong> 入口访问。
+              点击后系统将自动完成身份认证并登录，无需额外输入密码。
+            </p>
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs space-y-1.5">
+              <p className="font-medium text-foreground">访问流程：</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>登录 Odoo 企业平台</li>
+                <li>在 Odoo 菜单中找到 LLM-Wiki 入口</li>
+                <li>点击入口，系统自动跳转并完成认证</li>
+                <li>进入系统，开始使用各项功能</li>
+              </ol>
+            </div>
+            <p className="text-xs">
+              如 Odoo 菜单中没有 LLM-Wiki 入口，请联系系统管理员开通。
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 数据流 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-500" />
+            工作流程
+          </CardTitle>
+          <CardDescription>从文件到知识，四步轻松搞定</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {FLOW_STEPS.map((step, i) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.label} className="relative flex flex-col items-center text-center p-4 rounded-xl border bg-muted/20">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-3">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <span className="text-xs font-semibold text-foreground mb-1">{step.label}</span>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">{step.desc}</p>
+                  {i < FLOW_STEPS.length - 1 && (
+                    <ArrowRight className="hidden lg:block absolute -right-2.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/30" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 功能模块 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <MousePointerClick className="h-4 w-4 text-blue-500" />
+            功能模块介绍
+          </CardTitle>
+          <CardDescription>点击卡片查看详细使用说明</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {MODULES.map((mod) => {
+              const Icon = mod.icon;
+              const canAccess = hasAccess(isAdmin, perms, mod.permissionKey);
+
+              return (
+                <button
+                  key={mod.key}
+                  type="button"
+                  onClick={() => setDetailModule(mod)}
+                  className="rounded-xl border p-4 space-y-3 hover:border-primary/40 hover:shadow-md transition-all text-left bg-card cursor-pointer relative group"
+                >
+                  {/* 无权限蒙层 */}
+                  {!canAccess && (
+                    <div className="absolute inset-0 rounded-xl bg-muted/60 backdrop-blur-[1px] flex flex-col items-center justify-center gap-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 shadow-sm">
+                        <Lock className="h-4 w-4 text-amber-500 shrink-0" />
+                        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                          该模块需要管理员开通权限，如有需要请联系管理员
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    <div className={`flex size-9 items-center justify-center rounded-lg ${mod.bg} ${mod.color}`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <h3 className="text-sm font-semibold">{mod.title}</h3>
+                    {!canAccess && (
+                      <Badge variant="outline" className="ml-auto border-amber-500/50 text-amber-600 text-[10px] h-5 gap-1">
+                        <Lock className="h-3 w-3" />
+                        无权限
+                      </Badge>
+                    )}
+                    {canAccess && (
+                      <span className="ml-auto text-[10px] text-muted-foreground/60 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        点击查看详情 <ArrowRight className="h-3 w-3" />
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{mod.desc}</p>
+                  <ul className="space-y-1.5">
+                    {mod.tips.map((tip) => (
+                      <li key={tip} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <span className="mt-0.5 block size-1.5 shrink-0 rounded-full bg-primary/40" />
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* 无权限时底部固定提示条 */}
+                  {!canAccess && (
+                    <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                      <span className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                        当前账号未开通此模块，如需使用请联系管理员
+                      </span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 账号说明 */}
+      <Card className="border-blue-500/20 bg-blue-500/5">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Shield className="h-4 w-4 text-blue-500" />
+            账号说明
+          </CardTitle>
+          <CardDescription>
+            Odoo SSO 模式下的账号由 Odoo 统一管理
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start gap-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+            <Users className="h-8 w-8 shrink-0 text-blue-500 mt-0.5" />
+            <div className="space-y-2 text-sm">
+              <p className="font-medium">关于您的账号：</p>
+              <ul className="space-y-1.5 text-xs text-muted-foreground">
+                <li>• 账号通过 Odoo 自动创建，首次登录时由系统同步基本信息</li>
+                <li>• 无需记忆额外密码，通过 Odoo 跳转即可自动登录</li>
+                <li>• 如需修改个人信息（姓名、邮箱等），请在 Odoo 中操作</li>
+                <li>• 如需更多功能权限，请联系管理员开通</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-background p-3">
+            <HelpCircle className="h-5 w-5 shrink-0 text-primary/60 mt-0.5" />
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>
+                <strong>如果某个功能模块不可见</strong>，说明当前账号未被授予该模块的访问权限。请联系系统管理员为你开通。
+              </p>
+              <p>
+                管理员账号可在侧边栏的 <strong>用户管理</strong> 中查看所有用户及权限配置。
               </p>
             </div>
           </div>

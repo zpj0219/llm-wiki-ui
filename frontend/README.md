@@ -75,6 +75,18 @@ frontend/src/
 - **响应式**：`useIsMobile()` hook 监听 1024px 断点，桌面侧栏 / 移动端 Sheet 抽屉
 - **跨窗口同步**：`storage` 事件监听其他窗口登录态变更
 - **权限驱动**：登录后获取权限，决定默认首页和可见模块
+- **Odoo SSO**：Login 页通过 `useOdooCallback` hook 自动检测 URL 参数 `?odoo_token=...`，调用后端回调完成自动登录
+
+### 用户管理模式
+
+`/api/auth/config` 返回 `userManagementMode`（`local` / `odoo`），前端各组件据此调整行为：
+
+| 模式 | 登录方式 | 侧栏用户管理 | 用户管理页 | 帮助页 |
+|------|---------|-------------|-----------|--------|
+| `local` | 用户名 + 密码 | 有权限即显示 | 完整 CRUD | 完整使用指南 |
+| `odoo` | Odoo JWT SSO 跳转 | 仅管理员可见 | 管理员只读，非管理员不可操作 | Odoo 定制版（访问流程 + 功能模块 + 账号说明） |
+
+关键判断：管理员 (`is_superuser=true`) 在任何模式下都通用，odoo 模式下管理员仍可查看用户列表但不可编辑；普通用户只能在匹配模式（`account_source`）下登录。
 
 ### Chat.tsx — 对话页
 
@@ -128,12 +140,47 @@ frontend/src/
 - 拖放上传（支持文件夹结构保留）、并发队列（最多 3 个）
 - 文件状态图标（待处理/全文已提取/已生成实体）
 
+### Sidebar.tsx — 主导航侧栏
+
+- 启动时请求 `/api/auth/config` 获取用户管理模式
+- 管理员在所有模式下均可见"用户管理"入口
+- 非管理员仅在 `local` 模式下且有 `can_manage_accounts` 权限时可见
+- Odoo 模式 + 非管理员：用户管理入口隐藏
+- 其他导航项按权限字段过滤
+
+### Login.tsx — 登录页
+
+- 支持本地用户名密码登录（`local` 模式）
+- `useOdooCallback` hook：检测 URL 参数 `?odoo_token=...`，自动调用 Odoo SSO 回调完成登录，成功后清除 URL 参数
+- Odoo 模式下显示提示条"请通过 Odoo 菜单访问"
+- 修复：`is_superuser` 存储前转为布尔字符串（`String(Boolean(...))`），避免 SQLite 整数 `1` 被存为 `"1"` 导致 `=== 'true'` 永远为 `false`
+
+### AccountManagementTab.tsx — 用户管理
+
+- 支持 `local` / `odoo` 两种模式
+- Odoo 模式下隐藏添加、编辑、删除、权限按钮，状态列对非管理员显示"由 Odoo 管理"
+- 管理员在任何模式下均可见所有操作按钮
+- 桌面端表格 + 移动端卡片列表双布局
+
+### HelpTab.tsx — 使用帮助
+
+- 按 `userManagementMode` 渲染不同内容
+- `local` 模式：完整使用指南（工作流程 + 六个功能模块 + 权限说明）
+- `odoo` 模式：定制帮助（Odoo 访问流程 + 功能模块同 local + 账号说明）
+
 ### 设置模块
 
 - **通用**：主题切换（亮/暗/跟随系统）、通知开关、退出登录
 - **LLM-Wiki**：知识库子目录、上下文字符上限、Query 只读模式、上传登记
-- **帮助**：图文并茂的使用指南，权限感知（无权模块提示联系管理员）
-- **用户管理**：管理员可见，用户 CRUD + 权限配置
+- **帮助**：见上方 HelpTab 说明
+- **用户管理**：见上方 AccountManagementTab 说明
+
+### 设置模块
+
+- **通用**：主题切换（亮/暗/跟随系统）、通知开关、退出登录
+- **LLM-Wiki**：知识库子目录、上下文字符上限、Query 只读模式、上传登记
+- **帮助**：见上方 HelpTab 说明
+- **用户管理**：见上方 AccountManagementTab 说明
 
 ### 响应式策略
 
