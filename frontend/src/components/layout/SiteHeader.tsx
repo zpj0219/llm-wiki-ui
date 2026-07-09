@@ -109,7 +109,7 @@ export function SiteHeader({
       )}
 
       <div className="flex items-center gap-2 shrink-0 justify-self-end">
-        {currentPage === PAGES.LLM_WIKI && (
+        {currentPage === PAGES.LLM_WIKI && !isMobile && (
           <Button variant="outline" size="sm" onClick={onRefresh}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             刷新
