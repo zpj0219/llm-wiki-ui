@@ -52,6 +52,7 @@ export function AccountManagementTab() {
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isOdooMode, setIsOdooMode] = useState(false);
 
   // Dialogs
   const [formOpen, setFormOpen] = useState(false);
@@ -60,6 +61,14 @@ export function AccountManagementTab() {
   const [permUser, setPermUser] = useState<UserType | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserType | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // 获取用户管理模式
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_BASE ?? ''}/api/auth/config`)
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => setIsOdooMode(((d as any)?.userManagementMode ?? 'local') === 'odoo'))
+      .catch(() => {});
+  }, []);
 
   const loadUsers = useCallback(async () => {
     setError('');
@@ -154,13 +163,17 @@ export function AccountManagementTab() {
             <div>
               <CardTitle className="text-base">用户管理</CardTitle>
               <CardDescription>
-                管理系统用户账号和功能访问权限
+                {isOdooMode
+                  ? 'Odoo SSO 模式 — 查看用户列表（用户由 Odoo 统一管理）'
+                  : '管理系统用户账号和功能访问权限'}
               </CardDescription>
             </div>
-            <Button size="sm" onClick={openCreate}>
-              <UserPlus className="h-4 w-4 mr-1.5" />
-              添加用户
-            </Button>
+            {!isOdooMode && (
+              <Button size="sm" onClick={openCreate}>
+                <UserPlus className="h-4 w-4 mr-1.5" />
+                添加用户
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -230,15 +243,19 @@ export function AccountManagementTab() {
                   )}
 
                   <div className="flex items-center gap-1.5 pt-1">
+                    {isOdooMode ? (
+                      <span className="text-[10px] text-muted-foreground/50 px-1">由 Odoo 管理</span>
+                    ) : (
+                      <>
                     <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 h-8"
-                      onClick={() => openEdit(u)}
-                    >
-                      <Pencil className="h-3.5 w-3.5 mr-1" />
-                      编辑
-                    </Button>
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-8"
+                        onClick={() => openEdit(u)}
+                      >
+                        <Pencil className="h-3.5 w-3.5 mr-1" />
+                        编辑
+                      </Button>
                     {!u.is_superuser && (
                       <Button
                         variant="outline"
@@ -259,6 +276,8 @@ export function AccountManagementTab() {
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
+                    )}
+                    </>
                     )}
                   </div>
                 </div>
@@ -314,6 +333,8 @@ export function AccountManagementTab() {
                       <td className="py-2.5 pr-3">
                         {u.is_superuser ? (
                           <span className="text-xs font-medium text-green-600">启用</span>
+                        ) : isOdooMode ? (
+                          <span className="text-[10px] text-muted-foreground/50">由 Odoo 管理</span>
                         ) : (
                           <div className="flex items-center gap-3">
                             <button
@@ -345,6 +366,12 @@ export function AccountManagementTab() {
                       </td>
                       <td className="py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {isOdooMode ? (
+                            <span className="text-[10px] text-muted-foreground/50 px-2">
+                              由 Odoo 管理
+                            </span>
+                          ) : (
+                            <>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -365,7 +392,7 @@ export function AccountManagementTab() {
                               <Settings2 className="h-3.5 w-3.5" />
                             </Button>
                           )}
-                          {!u.is_superuser && (
+                          {!u.is_superuser && !isOdooMode && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -375,6 +402,8 @@ export function AccountManagementTab() {
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
+                          )}
+                          </>
                           )}
                         </div>
                       </td>

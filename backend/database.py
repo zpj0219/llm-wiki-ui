@@ -123,6 +123,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     token_cols = {row[1] for row in conn.execute("PRAGMA table_info(auth_tokens)").fetchall()}
     if "token_version" not in token_cols:
         conn.execute("ALTER TABLE auth_tokens ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+    # 迁移：为 users 表添加 external_id（Odoo SSO 桥接，可空唯一）
+    if "external_id" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN external_id TEXT")
 
 
 def init_db() -> None:

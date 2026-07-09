@@ -197,6 +197,7 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
         "is_active": bool(user.get("is_active", True)),
         "is_superuser": bool(user.get("is_superuser", False)),
         "created_at": user.get("created_at"),
+        "external_id": user.get("external_id"),
     }
 
 

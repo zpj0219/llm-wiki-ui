@@ -91,7 +91,7 @@ export function LoginForm({ className, onLoginSuccess, ...props }: LoginFormProp
       if (user.id) localStorage.setItem('userId', String(user.id));
       if (user.email) localStorage.setItem('userEmail', user.email);
       if (user.is_superuser !== undefined) {
-        localStorage.setItem('isSuperUser', String(user.is_superuser));
+        localStorage.setItem('isSuperUser', String(Boolean(user.is_superuser)));
       }
       if (user.full_name) localStorage.setItem('fullName', user.full_name);
 

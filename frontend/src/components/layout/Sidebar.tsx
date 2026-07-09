@@ -3,6 +3,8 @@ import { cn } from '@/lib/utils';
 import { UserInfo } from '@/components/layout/UserInfo';
 import { PAGES, PAGE_LABELS, KARPATHY_WIKI_TAGLINE, type PageId, hasAnyWikiAccess } from '@shared/constants';
 import type { UserPermissions } from '@shared/types';
+import { useState, useEffect } from 'react';
+import { API_BASE } from '@/services/api';
 
 type SidebarProps = {
   currentPage: PageId;
@@ -21,11 +23,30 @@ const ALL_NAV_ITEMS: { id: PageId; icon: typeof BookOpen; permissionKey?: keyof 
 export function Sidebar({ currentPage, onPageChange, permissions, onLogout }: SidebarProps) {
   const isAdmin = localStorage.getItem('isSuperUser') === 'true';
   const canManageAccounts = permissions?.can_manage_accounts || isAdmin;
+  const [userMgmtMode, setUserMgmtMode] = useState<string | null>(null);
 
-  // Filter nav items by permissions
+  // 获取用户管理模式（Odoo 模式下仅管理员可见用户管理入口）
+  useEffect(() => {
+    fetch(`${API_BASE}/api/auth/config`)
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => setUserMgmtMode((d as any)?.userManagementMode ?? 'local'))
+      .catch(() => setUserMgmtMode('local'));
+  }, []);
+
+  // Filter nav items by permissions AND mode
   const navItems = ALL_NAV_ITEMS.filter((item) => {
     if (item.alwaysShow) return true;
-    if (item.adminOnly) return canManageAccounts;
+    // 用户管理入口
+    if (item.adminOnly) {
+      // 管理员在所有模式下都可见
+      if (isAdmin) return true;
+      // 加载期间：非管理员保守不显示
+      if (userMgmtMode === null) return false;
+      // odoo 模式：非管理员不显示
+      if (userMgmtMode === 'odoo') return false;
+      // local 模式：按权限字段判断
+      return canManageAccounts;
+    }
     if (item.wikiGate) return hasAnyWikiAccess(permissions ?? null, isAdmin);
     if (!item.permissionKey) return true;
     if (isAdmin) return true;

@@ -13,6 +13,9 @@ services:
       HERMES_GATEWAY_URL: ${HERMES_GATEWAY_URL:-http://host.docker.internal:8642}
       HERMES_API_KEY: ${HERMES_API_KEY:-2222-2222-2222-2222}
       USE_HERMES_CHAT: ${USE_HERMES_CHAT:-auto}
+      # Odoo JWT SSO（与 Odoo 自定义模块共享密钥）
+      ODOO_SSO_JWT_SECRET: ${ODOO_SSO_JWT_SECRET:-}
+      USER_MANAGEMENT_MODE: ${USER_MANAGEMENT_MODE:-local}
     volumes:
       # 与 hermes-data 共享知识库卷（原件 / fulltext / wiki）
       - ${HERMES_KB_PATH:-../hermes-data/data/home/Documents/knowledge-base}:/data/knowledge-base:rw

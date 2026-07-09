@@ -55,3 +55,14 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     ".webp",
     ".zip",
 }
+
+# ── Odoo JWT SSO 桥接 ──────────────────────────────────────────────
+# 与 Odoo 自定义模块共享的 HS256 密钥，不为空即启用 Odoo SSO 回调
+ODOO_SSO_JWT_SECRET = os.getenv("ODOO_SSO_JWT_SECRET", "").strip()
+
+# ── 用户管理模式 ────────────────────────────────────────────────────
+# "local"  — 本地模式：管理员手动添加用户（默认）
+# "odoo"   — Odoo SSO 模式：用户由 Odoo 跳转回调自动创建，隐藏用户管理入口
+USER_MANAGEMENT_MODE = os.getenv("USER_MANAGEMENT_MODE", "local").strip().lower()
+if USER_MANAGEMENT_MODE not in ("local", "odoo"):
+    USER_MANAGEMENT_MODE = "local"

@@ -153,15 +153,101 @@ def api_refresh_token(authorization: str | None = Header(default=None)):
     return {"success": True, "data": result}
 
 
-# ── 用户管理（仅管理员） ──────────────────────────────────────────
+@router.get("/config")
+def auth_config():
+    """返回当前用户管理模式配置，前端据此决定是否显示用户管理等入口。"""
+    from config import USER_MANAGEMENT_MODE
+    return {
+        "success": True,
+        "userManagementMode": USER_MANAGEMENT_MODE,
+    }
+
+
+# ── Odoo JWT SSO 回调 ─────────────────────────────────────────────
+
+@router.get("/odoo/callback")
+def odoo_callback(token: str = ""):
+    """Odoo JWT SSO 回调：验证短期 JWT → upsert 用户 → 签发 token。
+
+    Odoo 侧重定向到此端点：GET /api/auth/odoo/callback?token=<HS256_JWT>
+    仅在 USER_MANAGEMENT_MODE=odoo 时可用。
+    """
+    from config import ODOO_SSO_JWT_SECRET, USER_MANAGEMENT_MODE
+    from odoo_auth import find_or_create_odoo_user, odoo_sso_enabled, verify_odoo_jwt
+
+    if USER_MANAGEMENT_MODE != "odoo":
+        raise HTTPException(status_code=400, detail="当前用户管理模式不是 Odoo SSO，请使用本地登录")
+
+    if not odoo_sso_enabled():
+        raise HTTPException(status_code=400, detail="Odoo SSO 未启用，请配置 ODOO_SSO_JWT_SECRET")
+
+    token = token.strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="缺少 token 参数")
+
+    payload = verify_odoo_jwt(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Odoo Token 无效或已过期")
+
+    sub = str(payload.get("sub") or "").strip()
+    login = str(payload.get("login") or "").strip()
+    email = str(payload.get("email") or "").strip() or None
+    name = str(payload.get("name") or "").strip() or None
+
+    if not sub:
+        raise HTTPException(status_code=400, detail="JWT 中缺少 sub 字段")
+
+    user = find_or_create_odoo_user(
+        sub=sub,
+        login=login,
+        email=email,
+        name=name,
+    )
+
+    if not user.get("is_active"):
+        raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
+
+    tokens = issue_tokens(user)
+    permissions = get_user_permissions(user["id"])
+
+    return {
+        "success": True,
+        "data": {
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "email": user.get("email"),
+                "full_name": user.get("full_name"),
+                "is_active": user.get("is_active", True),
+                "is_superuser": user.get("is_superuser", False),
+                "created_at": user.get("created_at"),
+                "external_id": user.get("external_id"),
+            },
+            "permissions": permissions,
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+            "token_type": "bearer",
+            "expires_in": tokens["expires_in"],
+        },
+    }
+
+
+# ── 用户管理（仅管理员，Odoo 模式下只读） ──────────────────────────
+
+def _require_local_mode():
+    from config import USER_MANAGEMENT_MODE
+    if USER_MANAGEMENT_MODE != "local":
+        raise HTTPException(status_code=400, detail="当前为 Odoo SSO 模式，用户管理由 Odoo 统一处理")
 
 @router.get("/users")
 def api_list_users(admin: dict = Depends(require_admin)):
+    # GET 在两种模式下均可用，Odoo 模式下管理员可查看用户列表（只读）
     return {"success": True, "users": get_all_users()}
 
 
 @router.post("/users")
 def api_create_user(body: CreateUserRequest, admin: dict = Depends(require_admin)):
+    _require_local_mode()
     try:
         user = create_user(
             username=body.username,
@@ -178,6 +264,7 @@ def api_create_user(body: CreateUserRequest, admin: dict = Depends(require_admin
 
 @router.put("/users/{user_id}")
 def api_update_user(user_id: int, body: UpdateUserRequest, admin: dict = Depends(require_admin)):
+    _require_local_mode()
     # 禁止禁用管理员账号
     if body.is_active is not None and not body.is_active and _check_is_admin(user_id):
         raise HTTPException(status_code=400, detail="不能禁用管理员账号")
@@ -200,6 +287,7 @@ def api_update_user(user_id: int, body: UpdateUserRequest, admin: dict = Depends
 
 @router.delete("/users/{user_id}")
 def api_delete_user(user_id: int, admin: dict = Depends(require_admin)):
+    _require_local_mode()
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="不能删除自己的账号")
     if not delete_user(user_id):
@@ -209,12 +297,14 @@ def api_delete_user(user_id: int, admin: dict = Depends(require_admin)):
 
 @router.get("/users/{user_id}/permissions")
 def api_get_user_permissions(user_id: int, admin: dict = Depends(require_admin)):
+    _require_local_mode()
     perms = get_user_permissions(user_id)
     return {"success": True, "permissions": perms}
 
 
 @router.put("/users/{user_id}/permissions")
 def api_update_user_permissions(user_id: int, body: UpdatePermissionsRequest, admin: dict = Depends(require_admin)):
+    _require_local_mode()
     filtered = {
         f: bool(body.permissions.get(f, DEFAULT_USER_PERMISSIONS[f]))
         for f in PERMISSION_FIELDS
