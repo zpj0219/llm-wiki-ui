@@ -214,6 +214,22 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
 
   const handleNewSession = useCallback(async () => {
     setError(null);
+
+    // 规则：如果已有未发过消息的空会话，直接跳转到那条，不新建
+    const emptySession = sessions.find((s) => s.messageCount === 0);
+    if (emptySession) {
+      setCurrentSessionId(emptySession.id);
+      setMobileSessionsOpen(false);
+      const detail = await getChatSession(emptySession.id);
+      if (detail.success && detail.session) {
+        setCurrentSession(detail.session);
+        if (detail.session.modelId) setSelectedModelId(detail.session.modelId);
+      }
+      setInput('');
+      textareaRef.current?.focus();
+      return;
+    }
+
     const res = await createChatSession({ modelId: selectedModelId || defaultModel });
     if (!res.success || !res.session) {
       setError(res.error ?? '创建会话失败');
@@ -234,7 +250,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     if (res.session.modelId) setSelectedModelId(res.session.modelId);
     setInput('');
     textareaRef.current?.focus();
-  }, [defaultModel, selectedModelId]);
+  }, [defaultModel, selectedModelId, sessions]);
 
   useEffect(() => {
     void loadSessions();

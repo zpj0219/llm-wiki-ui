@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -198,6 +198,59 @@ function FrontmatterCard({ fields }: { fields: Record<string, unknown> }) {
   );
 }
 
+// ── Draggable scroll table wrapper ──────────────────────────────────
+
+function DraggableTable({ children, ...tableProps }: any) {
+  const ref = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    const el = ref.current;
+    if (!el) return;
+    // Only start drag if content is actually scrollable
+    if (el.scrollWidth <= el.clientWidth) return;
+    dragging.current = true;
+    startX.current = e.clientX;
+    scrollLeft.current = el.scrollLeft;
+    el.style.cursor = 'grabbing';
+    el.style.userSelect = 'none';
+  }, []);
+
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragging.current) return;
+    const el = ref.current;
+    if (!el) return;
+    const dx = e.clientX - startX.current;
+    el.scrollLeft = scrollLeft.current - dx;
+  }, []);
+
+  const onMouseUp = useCallback(() => {
+    dragging.current = false;
+    const el = ref.current;
+    if (el) {
+      el.style.cursor = '';
+      el.style.userSelect = '';
+    }
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="overflow-x-auto -mx-4 px-4 cursor-grab"
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+    >
+      <table {...tableProps} className="w-auto min-w-full border-collapse text-sm">
+        {children}
+      </table>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────
 
 type WikiMarkdownPreviewProps = {
@@ -221,11 +274,9 @@ export function WikiMarkdownPreview({ content, onOpenPage }: WikiMarkdownPreview
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
         components={{
           table: ({ children, ...tableProps }: any) => (
-            <div className="overflow-x-auto -mx-4 px-4">
-              <table {...tableProps} className="w-auto min-w-full border-collapse text-sm">
-                {children}
-              </table>
-            </div>
+            <DraggableTable {...tableProps}>
+              {children}
+            </DraggableTable>
           ),
           a: ({ href, children, ...props }: any) => {
             if (href?.startsWith('wiki://')) {
