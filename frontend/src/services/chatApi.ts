@@ -146,7 +146,7 @@ export type ChatStreamEvent =
   | { type: 'stopped'; session: ChatSession; assistantMessage: ChatMessage }
   | { type: 'error'; message: string };
 
-/** OpenWebUI 风格流式对话 — LLM-Wiki /v1/chat/completions SSE */
+/** 流式对话 SSE */
 export async function streamChatMessage(
   sessionId: string,
   content: string,
