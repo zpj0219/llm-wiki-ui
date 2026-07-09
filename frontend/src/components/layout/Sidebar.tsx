@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Settings, Shield } from 'lucide-react';
+import { BookOpen, MessageSquare, Settings, CircleUser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserInfo } from '@/components/layout/UserInfo';
 import { PAGES, PAGE_LABELS, KARPATHY_WIKI_TAGLINE, type PageId, hasAnyWikiAccess } from '@shared/constants';
@@ -14,7 +14,7 @@ type SidebarProps = {
 const ALL_NAV_ITEMS: { id: PageId; icon: typeof BookOpen; permissionKey?: keyof UserPermissions; adminOnly?: boolean; alwaysShow?: boolean; wikiGate?: boolean }[] = [
   { id: PAGES.CHAT, icon: MessageSquare, permissionKey: 'can_access_chat' },
   { id: PAGES.LLM_WIKI, icon: BookOpen, wikiGate: true },
-  { id: PAGES.ACCOUNT_MANAGEMENT, icon: Shield, adminOnly: true },
+  { id: PAGES.ACCOUNT_MANAGEMENT, icon: CircleUser, adminOnly: true },
   { id: PAGES.SETTINGS, icon: Settings, alwaysShow: true },
 ];
 

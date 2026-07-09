@@ -14,7 +14,7 @@ export const PAGE_LABELS: Record<PageId, string> = {
   [PAGES.LOGIN]: '登录',
   [PAGES.LLM_WIKI]: '知识库',
   [PAGES.CHAT]: '对话',
-  [PAGES.ACCOUNT_MANAGEMENT]: '账号管理',
+  [PAGES.ACCOUNT_MANAGEMENT]: '用户管理',
   [PAGES.SETTINGS]: '设置',
 };
 

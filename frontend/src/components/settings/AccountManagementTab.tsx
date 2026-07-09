@@ -3,8 +3,7 @@ import {
   UserPlus,
   Pencil,
   Trash2,
-  Shield,
-  ShieldOff,
+  CircleUser,
   Loader2,
   AlertCircle,
   Settings2,
@@ -153,7 +152,7 @@ export function AccountManagementTab() {
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="text-base">账号管理</CardTitle>
+              <CardTitle className="text-base">用户管理</CardTitle>
               <CardDescription>
                 管理系统用户账号和功能访问权限
               </CardDescription>
@@ -201,12 +200,12 @@ export function AccountManagementTab() {
                           </span>
                           {u.is_superuser ? (
                             <Badge variant="secondary" className="text-[10px] shrink-0">
-                              <Shield className="h-3 w-3 mr-0.5" />
+                              <CircleUser className="h-3 w-3 mr-0.5" />
                               管理员
                             </Badge>
                           ) : (
                             <Badge variant="outline" className="text-[10px] shrink-0">
-                              <ShieldOff className="h-3 w-3 mr-0.5" />
+                              <CircleUser className="h-3 w-3 mr-0.5" />
                               普通
                             </Badge>
                           )}
@@ -302,12 +301,12 @@ export function AccountManagementTab() {
                       <td className="py-2.5 pr-3">
                         {u.is_superuser ? (
                           <Badge variant="secondary" className="text-[10px]">
-                            <Shield className="h-3 w-3 mr-0.5" />
+                            <CircleUser className="h-3 w-3 mr-0.5" />
                             管理员
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px]">
-                            <ShieldOff className="h-3 w-3 mr-0.5" />
+                            <CircleUser className="h-3 w-3 mr-0.5" />
                             普通用户
                           </Badge>
                         )}

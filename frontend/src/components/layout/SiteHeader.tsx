@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, FolderOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw } from 'lucide-react';
+import { BarChart3, BookOpen, CircleUser, FolderOpen, LayoutGrid, MessageSquare, Network, Plus, RefreshCw, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,8 +37,12 @@ export function SiteHeader({
   isMobile,
 }: SiteHeaderProps) {
   const pageLabel = sidebarCollapsed ? 'LLM-Wiki' : (PAGE_LABELS[currentPage] ?? currentPage);
-  const PageIcon =
-    currentPage === PAGES.CHAT ? MessageSquare : BookOpen;
+  const PageIcon = (() => {
+    if (currentPage === PAGES.CHAT) return MessageSquare;
+    if (currentPage === PAGES.ACCOUNT_MANAGEMENT) return CircleUser;
+    if (currentPage === PAGES.SETTINGS) return Settings;
+    return BookOpen;
+  })();
   const chatHeaderExtras = useChatHeaderExtrasSlot();
 
   const perms = getStoredPermissions() as UserPermissions | null;
