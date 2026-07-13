@@ -27,6 +27,7 @@ import {
   Palette,
   ListChecks,
   LogIn,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -61,9 +62,10 @@ const MODULES: ModuleDetail[] = [
     color: 'text-emerald-500',
     bg: 'bg-emerald-500/10',
     permissionKey: 'can_access_chat',
-    desc: '与 AI 实时流式对话，基于知识库内容回答问题。支持多轮对话、思考步骤展示、模型切换。',
+    desc: '与 AI 实时流式对话，基于知识库内容回答问题。支持多轮会话、思考步骤、模型切换，以及将有价值的回复「结晶」沉淀到知识库。',
     tips: [
       '按 Enter 发送，Shift+Enter 换行',
+      '助手气泡底部可一键结晶到知识库',
       '左侧可管理多个对话会话',
       '顶部下拉框切换 AI 模型',
       '点击停止按钮可中断生成',
@@ -76,6 +78,7 @@ const MODULES: ModuleDetail[] = [
           '在底部输入框输入问题后按 Enter 键发送，AI 会基于知识库内容流式返回回答。',
           '如需换行，按 Shift + Enter 即可。',
           '生成过程中可点击红色停止按钮中断回复。',
+          '助手气泡尾部有参考提示：「本回复由大模型总结，仅供参考」，使用前请结合现场资料与规程核实。',
         ],
       },
       {
@@ -94,6 +97,18 @@ const MODULES: ModuleDetail[] = [
         content: [
           '顶部"模型"下拉框可选择使用的 AI 模型，切换后当前会话后续消息使用新模型。',
           '模型列表由后端 Hermes Gateway 提供，需确保 Gateway 已正确配置 API Key。',
+        ],
+      },
+      {
+        title: '对话结晶',
+        icon: Sparkles,
+        content: [
+          '助手回复完成后，气泡底部会出现主色「结晶」按钮。点击后弹出确认框，可修改主题并核对将写入知识库的内容。',
+          '结晶会把「最近一条用户问题 + 本条助手回复」提交给 Hermes 异步处理，写入知识库目录 wiki/synthesis/sessions/，供后续检索与复用。',
+          '确认框中展示完整助手正文（可滚动），并显示字数；真正提交的是全文，不会因预览而截断。',
+          '去重规则：按对话正文字节指纹（MD5）判断，主题不参与计算。同一助手消息或相同正文再次提交会被拦截；仅改主题不会视为新内容。',
+          '若确实需要重新沉淀，可在确认框勾选「强制再提交」后再确认。已结晶过的消息按钮会显示为「已结晶」。',
+          '结晶任务提交成功后由 Agent 异步写入；约数十秒后可能触发知识库全文索引更新，之后可在知识库中检索到新页面。',
         ],
       },
     ],
@@ -303,7 +318,7 @@ const FLOW_STEPS = [
   { icon: Upload, label: '上传原件', desc: '将 PDF、Word、图片等文件上传至知识库' },
   { icon: Zap, label: '自动处理', desc: '后台定时任务自动解析、全文提取、结构化' },
   { icon: FileText, label: 'Wiki 页面', desc: '生成结构化互链的 Wiki 知识页面' },
-  { icon: MessageSquare, label: 'AI 对话', desc: '基于知识库内容进行智能问答' },
+  { icon: MessageSquare, label: 'AI 对话', desc: '基于知识库问答，支持将有价值回复结晶沉淀' },
 ];
 
 function hasAccess(
@@ -547,7 +562,7 @@ export function HelpTab() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <Badge variant="secondary" className="text-[10px] h-5 px-1.5">对话</Badge>
-                  知识库 AI 对话功能
+                  知识库 AI 对话与结晶沉淀
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Badge variant="secondary" className="text-[10px] h-5 px-1.5">工作台</Badge>

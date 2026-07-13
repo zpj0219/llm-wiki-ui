@@ -1114,15 +1114,15 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
           if (!open) closeCrystallizeConfirm();
         }}
       >
-        <DialogContent className="max-w-[95vw] sm:max-w-md" onClose={closeCrystallizeConfirm}>
+        <DialogContent className="max-h-[min(92vh,720px)] w-full max-w-[95vw] sm:max-w-md" onClose={closeCrystallizeConfirm}>
           <DialogHeader>
             <DialogTitle>确认结晶</DialogTitle>
             <DialogDescription>
               将本条对话沉淀到知识库（wiki/synthesis/sessions）。提交后由 Agent 异步写入。
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="space-y-3">
-            <div className="space-y-1.5">
+          <DialogBody className="flex min-h-0 flex-col space-y-3 overflow-hidden">
+            <div className="shrink-0 space-y-1.5">
               <Label htmlFor="crystallize-topic">主题</Label>
               <Input
                 id="crystallize-topic"
@@ -1142,7 +1142,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                 autoFocus
               />
             </div>
-            <div className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1.5 text-xs">
+            <div className="grid shrink-0 grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1.5 text-xs">
               <span className="text-muted-foreground">会话</span>
               <span className="truncate font-mono text-[11px]" title={crystallizeDraft?.conversationId}>
                 {crystallizeDraft?.conversationId ?? '—'}
@@ -1153,36 +1153,36 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
               <span>wiki/synthesis/sessions/</span>
             </div>
             {crystallizeDraft?.userQuestion ? (
-              <div className="space-y-1">
+              <div className="shrink-0 space-y-1">
                 <p className="text-xs font-medium text-muted-foreground">用户问题</p>
-                <p className="max-h-16 overflow-y-auto rounded-md border border-border/70 bg-muted/40 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
+                <p className="max-h-24 overflow-y-auto overscroll-contain rounded-md border border-border/70 bg-muted/40 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
                   {crystallizeDraft.userQuestion}
                 </p>
               </div>
             ) : null}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-muted-foreground">助手回复（完整正文）</p>
+            <div className="flex min-h-0 flex-1 flex-col space-y-1">
+              <div className="flex shrink-0 items-center justify-between gap-2">
+                <p className="text-xs font-medium text-muted-foreground">助手回复</p>
                 {crystallizeDraft ? (
                   <span className="text-[10px] text-muted-foreground tabular-nums">
                     {crystallizeDraft.assistantContent.length} 字
                   </span>
                 ) : null}
               </div>
-              <p className="max-h-48 overflow-y-auto rounded-md border border-border/70 bg-muted/40 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
+              <p className="min-h-[6rem] flex-1 overflow-y-auto overscroll-contain rounded-md border border-border/70 bg-muted/40 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
                 {crystallizeDraft?.assistantContent ?? ''}
               </p>
             </div>
             {crystallizeDupInfo ? (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
+              <div className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
                 {crystallizeDupInfo}
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
+              <p className="shrink-0 text-[11px] text-muted-foreground leading-relaxed">
                 去重依据：对话正文字节指纹（MD5，不含主题）。仅改主题不会视为新内容。
               </p>
             )}
-            <label className="flex items-center gap-2 text-xs text-muted-foreground select-none">
+            <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground select-none">
               <input
                 type="checkbox"
                 className="size-3.5 rounded border-border"

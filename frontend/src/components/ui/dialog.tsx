@@ -50,7 +50,8 @@ export function DialogContent({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card shadow-lg max-h-[min(90vh,640px)] flex flex-col',
+        'relative flex max-h-[min(92vh,720px)] flex-col overflow-hidden',
+        'rounded-xl border border-border bg-card shadow-lg',
         className
       )}
       role="dialog"
@@ -60,7 +61,7 @@ export function DialogContent({
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="absolute right-3 top-3 z-10 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label="关闭"
         >
           <X className="h-4 w-4" />
@@ -72,7 +73,12 @@ export function DialogContent({
 }
 
 export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-col gap-1.5 p-6 pb-4 pr-12', className)} {...props} />;
+  return (
+    <div
+      className={cn('flex shrink-0 flex-col gap-1.5 p-6 pb-4 pr-12', className)}
+      {...props}
+    />
+  );
 }
 
 export function DialogTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
@@ -87,13 +93,26 @@ export function DialogDescription({
 }
 
 export function DialogBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex-1 px-6 pb-6 space-y-4 overflow-visible', className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        // 占据 header/footer 之间的剩余高度；内容过多时在 body 内滚动，保证 footer 始终完整可见。
+        'min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 pb-4',
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('flex flex-col-reverse sm:flex-row sm:justify-end gap-2 px-6 py-4 border-t bg-muted/30', className)}
+      className={cn(
+        'flex shrink-0 flex-col-reverse sm:flex-row sm:justify-end gap-2',
+        'border-t border-border bg-muted/30 px-6 py-4',
+        className
+      )}
       {...props}
     />
   );
