@@ -48,9 +48,16 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = await response.json().catch(() => ({} as Record<string, unknown>));
+    const detail = (err as { detail?: unknown }).detail;
+    if (detail && typeof detail === 'object') {
+      throw new Error(JSON.stringify(detail));
+    }
     throw new Error(
-      err.detail ?? err.message ?? err.errorMessage ?? `HTTP ${response.status}`
+      (typeof detail === 'string' ? detail : undefined) ??
+        (err as { message?: string }).message ??
+        (err as { errorMessage?: string }).errorMessage ??
+        `HTTP ${response.status}`
     );
   }
   return response.json() as Promise<T>;

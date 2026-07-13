@@ -21,8 +21,25 @@ from chat_service import (
     stream_message_async,
     update_session_model,
 )
-from config import DEFAULT_CHAT_MODEL, HERMES_GATEWAY_URL
-from hermes_client import HermesError, health_check, hermes_enabled
+from config import (
+    DEFAULT_CHAT_MODEL,
+    HERMES_GATEWAY_URL,
+    HERMES_WEBHOOK_ROUTE,
+    HERMES_WEBHOOK_SECRET,
+    HERMES_WEBHOOK_URL,
+)
+from hermes_client import (
+    HermesError,
+    crystallize_conversation,
+    health_check,
+    hermes_enabled,
+)
+from crystallize_store import (
+    content_fingerprint,
+    find_duplicate,
+    list_message_ids_submitted,
+    record_submission,
+)
 from routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -60,6 +77,8 @@ def api_chat_config(_: dict = Depends(get_current_user)):
         "hermesError": hermes_error,
         "defaultModel": DEFAULT_CHAT_MODEL,
         "streaming": True,
+        "crystallizeEnabled": bool(HERMES_WEBHOOK_SECRET),
+        "crystallizeWebhook": f"{HERMES_WEBHOOK_URL}/webhooks/{HERMES_WEBHOOK_ROUTE}",
     }
 
 
@@ -190,6 +209,120 @@ async def api_send_message_stream(
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
+
+
+
+class CrystallizeRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1)
+    conversationId: str | None = None
+    messageId: str | None = None
+    source: str | None = None
+    timestamp: str | None = None
+    force: bool = False
+
+
+class CrystallizeLookupRequest(BaseModel):
+    messageIds: list[str] = Field(default_factory=list)
+    content: str | None = None
+
+
+@router.post("/crystallize/lookup")
+def api_crystallize_lookup(
+    body: CrystallizeLookupRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """查询消息是否已结晶 / 内容指纹是否已提交。"""
+    user_id = str(current_user["id"])
+    submitted = list_message_ids_submitted(user_id, body.messageIds or [])
+    content_hit = None
+    match_by = None
+    if body.content and body.content.strip():
+        h = content_fingerprint(body.content)
+        content_hit, match_by = find_duplicate(user_id, content_hash=h, message_id="")
+    return {
+        "success": True,
+        "submittedMessageIds": sorted(submitted),
+        "contentHash": content_fingerprint(body.content) if body.content else None,
+        "contentDuplicate": content_hit,
+        "matchBy": match_by,
+    }
+
+
+@router.post("/crystallize")
+def api_crystallize(
+    body: CrystallizeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """将对话片段提交到 Hermes Webhook 结晶化（异步 202）。
+
+    精确去重：
+    - content_hash = MD5(normalize(content))，**不含 topic**
+    - 同一用户下 message_id 或 content_hash 命中则 409（force=true 可强制）
+    """
+    user_id = str(current_user["id"])
+    topic = body.topic.strip()
+    content = body.content
+    conversation_id = (body.conversationId or "").strip()
+    message_id = (body.messageId or "").strip()
+    source = (body.source or "llm-wiki-ui").strip() or "llm-wiki-ui"
+
+    content_hash = content_fingerprint(content)
+    existing, match_by = find_duplicate(
+        user_id, content_hash=content_hash, message_id=message_id
+    )
+    if existing and not body.force:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "CRYSTALLIZE_DUPLICATE",
+                "message": (
+                    "该助手回复已结晶过"
+                    if match_by == "message_id"
+                    else "相同对话正文已结晶过（主题不参与去重）"
+                ),
+                "matchBy": match_by,
+                "contentHash": content_hash,
+                "existing": existing,
+            },
+        )
+
+    try:
+        result = crystallize_conversation(
+            topic=topic,
+            content=content,
+            source=source,
+            conversation_id=conversation_id,
+            timestamp=body.timestamp,
+        )
+    except HermesError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    delivery_id = result.get("delivery_id")
+    record = record_submission(
+        user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        content_hash=content_hash,
+        topic=topic,
+        delivery_id=str(delivery_id) if delivery_id else None,
+        source=source,
+    )
+
+    return {
+        "success": True,
+        "status": result.get("status", "accepted"),
+        "route": result.get("route", HERMES_WEBHOOK_ROUTE),
+        "deliveryId": delivery_id,
+        "contentHash": content_hash,
+        "message": "结晶任务已提交，Agent 将异步写入知识库",
+        "userId": current_user.get("id"),
+        "submission": record,
+        "forced": bool(body.force and existing),
+        "previous": existing if body.force else None,
+    }
 
 @router.post("/sessions/{session_id}/stop")
 def api_stop_session(session_id: str, current_user: dict = Depends(get_current_user)):

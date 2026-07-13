@@ -319,3 +319,159 @@ export async function listChatModels(): Promise<{
     return { success: false, models: [], error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+export type CrystallizeExisting = {
+  id?: number;
+  userId?: string;
+  conversationId?: string;
+  messageId?: string;
+  contentHash?: string;
+  topic?: string;
+  deliveryId?: string | null;
+  source?: string;
+  createdAt?: string;
+};
+
+export type CrystallizeResult = {
+  success: boolean;
+  status?: string;
+  route?: string;
+  deliveryId?: string;
+  contentHash?: string;
+  message?: string;
+  error?: string;
+  duplicate?: boolean;
+  matchBy?: string | null;
+  existing?: CrystallizeExisting | null;
+  forced?: boolean;
+};
+
+function parseApiError(e: unknown): {
+  message: string;
+  duplicate?: boolean;
+  matchBy?: string | null;
+  existing?: CrystallizeExisting | null;
+  contentHash?: string;
+} {
+  if (!(e instanceof Error)) {
+    return { message: String(e) };
+  }
+  const raw = e.message;
+  // FastAPI detail may be object stringified poorly; try parse JSON object in message
+  try {
+    const parsed = JSON.parse(raw) as {
+      code?: string;
+      message?: string;
+      matchBy?: string;
+      existing?: CrystallizeExisting;
+      contentHash?: string;
+    };
+    if (parsed && typeof parsed === 'object' && parsed.code === 'CRYSTALLIZE_DUPLICATE') {
+      return {
+        message: parsed.message ?? '内容已结晶过',
+        duplicate: true,
+        matchBy: parsed.matchBy ?? null,
+        existing: parsed.existing ?? null,
+        contentHash: parsed.contentHash,
+      };
+    }
+  } catch {
+    /* not JSON */
+  }
+  if (raw.includes('CRYSTALLIZE_DUPLICATE') || raw.includes('已结晶')) {
+    return { message: raw, duplicate: true };
+  }
+  return { message: raw };
+}
+
+/** 提交对话片段到 Hermes 结晶化 Webhook（经 BFF 代理，HMAC 不暴露到前端） */
+export async function crystallizeChat(params: {
+  topic: string;
+  content: string;
+  conversationId?: string;
+  messageId?: string;
+  source?: string;
+  force?: boolean;
+}): Promise<CrystallizeResult> {
+  try {
+    const res = await requestJson<{
+      success: boolean;
+      status?: string;
+      route?: string;
+      deliveryId?: string;
+      contentHash?: string;
+      message?: string;
+      forced?: boolean;
+      previous?: CrystallizeExisting | null;
+    }>('/api/chat/crystallize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: params.topic,
+        content: params.content,
+        conversationId: params.conversationId,
+        messageId: params.messageId,
+        source: params.source ?? 'llm-wiki-ui',
+        force: Boolean(params.force),
+      }),
+    });
+    return {
+      success: true,
+      status: res.status,
+      route: res.route,
+      deliveryId: res.deliveryId,
+      contentHash: res.contentHash,
+      message: res.message,
+      forced: res.forced,
+      existing: res.previous ?? null,
+    };
+  } catch (e) {
+    const parsed = parseApiError(e);
+    return {
+      success: false,
+      error: parsed.message,
+      duplicate: parsed.duplicate,
+      matchBy: parsed.matchBy,
+      existing: parsed.existing,
+      contentHash: parsed.contentHash,
+    };
+  }
+}
+
+/** 查询消息是否已结晶（批量 messageId + 可选 content 指纹） */
+export async function lookupCrystallize(params: {
+  messageIds?: string[];
+  content?: string;
+}): Promise<{
+  success: boolean;
+  submittedMessageIds: string[];
+  contentDuplicate?: CrystallizeExisting | null;
+  error?: string;
+}> {
+  try {
+    const res = await requestJson<{
+      success: boolean;
+      submittedMessageIds: string[];
+      contentDuplicate?: CrystallizeExisting | null;
+    }>('/api/chat/crystallize/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messageIds: params.messageIds ?? [],
+        content: params.content,
+      }),
+    });
+    return {
+      success: true,
+      submittedMessageIds: res.submittedMessageIds ?? [],
+      contentDuplicate: res.contentDuplicate ?? null,
+    };
+  } catch (e) {
+    return {
+      success: false,
+      submittedMessageIds: [],
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+

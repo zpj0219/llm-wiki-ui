@@ -348,3 +348,88 @@ def _extract_openai_text(data: Any) -> str:
             return val
 
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def crystallize_conversation(
+    *,
+    topic: str,
+    content: str,
+    source: str = "llm-wiki-ui",
+    conversation_id: str = "",
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    """调用 Hermes Webhook 结晶化接口（默认 :8644/webhooks/crystallize）。
+
+    HMAC: X-Webhook-Signature = hex(HMAC-SHA256(raw_body, secret))
+    """
+    import hashlib
+    import hmac
+    import uuid
+    from datetime import datetime, timezone
+
+    from config import (
+        HERMES_WEBHOOK_ROUTE,
+        HERMES_WEBHOOK_SECRET,
+        HERMES_WEBHOOK_URL,
+    )
+
+    if not HERMES_WEBHOOK_SECRET:
+        raise HermesError(
+            "未配置 HERMES_WEBHOOK_SECRET（与 hermes-data config.yaml 中 "
+            "platforms.webhook.routes.crystallize.secret 一致）"
+        )
+
+    topic = (topic or "").strip()
+    content = (content or "").strip()
+    if not topic:
+        raise HermesError("topic 不能为空")
+    if not content:
+        raise HermesError("content 不能为空")
+
+    ts = timestamp or datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    payload = {
+        "topic": topic,
+        "content": content,
+        "source": source or "llm-wiki-ui",
+        "conversation_id": conversation_id or "",
+        "timestamp": ts,
+    }
+    raw_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    signature = hmac.new(
+        HERMES_WEBHOOK_SECRET.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    request_id = f"cryst-{uuid.uuid4().hex}"
+
+    route = HERMES_WEBHOOK_ROUTE.strip("/") or "crystallize"
+    url = f"{HERMES_WEBHOOK_URL.rstrip('/')}/webhooks/{route}"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Webhook-Signature": signature,
+        "X-Request-ID": request_id,
+    }
+
+    try:
+        with _client(timeout=30.0) as client:
+            resp = client.post(url, content=raw_body, headers=headers)
+    except httpx.RequestError as e:
+        raise HermesError(f"无法连接 Hermes Webhook ({url}): {e}") from e
+
+    detail: Any
+    try:
+        detail = resp.json()
+    except Exception:
+        detail = {"raw": resp.text[:500]}
+
+    if resp.status_code >= 400:
+        msg = detail if isinstance(detail, str) else (
+            detail.get("error") or detail.get("detail") or detail.get("message") or detail
+        )
+        raise HermesError(f"结晶化 Webhook 错误 ({resp.status_code}): {msg}")
+
+    if not isinstance(detail, dict):
+        detail = {"data": detail}
+    detail.setdefault("delivery_id", request_id)
+    detail.setdefault("webhook_url", url)
+    return detail

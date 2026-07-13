@@ -68,9 +68,24 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS crystallize_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL DEFAULT '',
+    message_id TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL,
+    topic TEXT NOT NULL DEFAULT '',
+    delivery_id TEXT,
+    source TEXT NOT NULL DEFAULT 'llm-wiki-ui',
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_crystallize_user_hash ON crystallize_submissions(user_id, content_hash);
+CREATE INDEX IF NOT EXISTS idx_crystallize_user_message ON crystallize_submissions(user_id, message_id);
+CREATE INDEX IF NOT EXISTS idx_crystallize_created ON crystallize_submissions(created_at);
 """
 
 _SEED_USERS: tuple[dict[str, Any], ...] = (

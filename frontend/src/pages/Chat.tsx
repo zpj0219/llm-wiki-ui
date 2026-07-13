@@ -6,12 +6,24 @@ import {
   MessageSquare,
   Plus,
   Send,
+  Sparkles,
   Square,
   Trash2,
 } from 'lucide-react';
 import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
 import { ChatThinkingSteps } from '@/components/chat/ChatThinkingSteps';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,6 +37,8 @@ import {
   getChatSession,
   listChatModels,
   listChatSessions,
+  crystallizeChat,
+  lookupCrystallize,
   streamChatMessageWithAuth,
   updateChatSessionModel,
 } from '@/services/chatApi';
@@ -93,6 +107,15 @@ function mergeSessionWithSteps(session: ChatSession, steps: ChatStep[]): ChatSes
   };
 }
 
+type CrystallizeDraft = {
+  messageId: string;
+  topic: string;
+  userQuestion: string;
+  assistantContent: string;
+  conversationId: string;
+  duplicateHint?: string;
+};
+
 function useIsMobile() {
   const [v, setV] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches);
   useEffect(() => { const m = window.matchMedia('(max-width: 1023px)'); const h = (e: MediaQueryListEvent) => setV(e.matches); m.addEventListener('change', h); return () => m.removeEventListener('change', h); }, []);
@@ -114,6 +137,13 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const [loading, setLoading] = useState(true);
   /** 正在流式生成中的会话 ID，null 表示没有进行中的流式 */
   const [streamingSessionId, setStreamingSessionId] = useState<string | null>(null);
+  const [crystallizingIds, setCrystallizingIds] = useState<Record<string, boolean>>({});
+  const [crystallizeHints, setCrystallizeHints] = useState<Record<string, string>>({});
+  const [crystallizeDraft, setCrystallizeDraft] = useState<CrystallizeDraft | null>(null);
+  const [crystallizeTopic, setCrystallizeTopic] = useState('');
+  const [crystallizeSubmitting, setCrystallizeSubmitting] = useState(false);
+  const [crystallizeForce, setCrystallizeForce] = useState(false);
+  const [crystallizeDupInfo, setCrystallizeDupInfo] = useState<string | null>(null);
   const sending = streamingSessionId != null;
 
   /** 消息是否正在流式生成 — 由后端占位符约定驱动，切换会话/刷新后也能正确展示 */
@@ -541,6 +571,153 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     }
   };
 
+
+
+  // 加载会话后查询哪些助手消息已结晶
+  useEffect(() => {
+    if (!currentSession?.messages?.length) return;
+    const assistantIds = currentSession.messages
+      .filter((m) => m.role === 'assistant' && m.content && m.content !== STREAMING_PLACEHOLDER)
+      .map((m) => m.id);
+    if (!assistantIds.length) return;
+    let cancelled = false;
+    void lookupCrystallize({ messageIds: assistantIds }).then((res) => {
+      if (cancelled || !res.success) return;
+      setCrystallizeHints((prev) => {
+        const next = { ...prev };
+        for (const id of res.submittedMessageIds) {
+          if (!next[id] || next[id] === '失败') next[id] = '已结晶';
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSession?.id, currentSession?.messages]);
+
+  const openCrystallizeConfirm = useCallback(
+    (message: ChatMessage) => {
+      if (!currentSession || message.role !== 'assistant') return;
+      const content = message.content.trim();
+      if (!content || content === STREAMING_PLACEHOLDER) return;
+      if (crystallizingIds[message.id] || crystallizeSubmitting) return;
+
+      const idx = currentSession.messages.findIndex((m) => m.id === message.id);
+      let userQuestion = '';
+      if (idx > 0) {
+        for (let i = idx - 1; i >= 0; i -= 1) {
+          if (currentSession.messages[i].role === 'user') {
+            userQuestion = currentSession.messages[i].content.trim();
+            break;
+          }
+        }
+      }
+
+      const topicBase =
+        userQuestion.replace(/\s+/g, ' ').slice(0, 40) ||
+        content.replace(/\s+/g, ' ').slice(0, 40) ||
+        '对话结晶';
+      const topic = topicBase.length >= 40 ? `${topicBase}…` : topicBase;
+
+      setCrystallizeDraft({
+        messageId: message.id,
+        topic,
+        userQuestion,
+        assistantContent: content,
+        conversationId: currentSession.id,
+      });
+      setCrystallizeTopic(topic);
+      setCrystallizeForce(false);
+      setCrystallizeDupInfo(
+        crystallizeHints[message.id] === '已结晶' || crystallizeHints[message.id] === '已提交'
+          ? '该条回复此前已提交过结晶，可修改主题后强制再提交。'
+          : null
+      );
+      setError(null);
+    },
+    [currentSession, crystallizingIds, crystallizeSubmitting]
+  );
+
+  const closeCrystallizeConfirm = useCallback(() => {
+    if (crystallizeSubmitting) return;
+    setCrystallizeDraft(null);
+    setCrystallizeTopic('');
+    setCrystallizeForce(false);
+    setCrystallizeDupInfo(null);
+  }, [crystallizeSubmitting]);
+
+  const confirmCrystallize = useCallback(async () => {
+    if (!crystallizeDraft) return;
+    const topic = crystallizeTopic.trim();
+    if (!topic) {
+      setError('请填写结晶主题');
+      return;
+    }
+
+    const messageId = crystallizeDraft.messageId;
+    const crystallizeBody = [
+      crystallizeDraft.userQuestion
+        ? `## 用户问题\n${crystallizeDraft.userQuestion}`
+        : '',
+      `## 助手回复\n${crystallizeDraft.assistantContent}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    setCrystallizeSubmitting(true);
+    setCrystallizingIds((prev) => ({ ...prev, [messageId]: true }));
+    setCrystallizeHints((prev) => ({ ...prev, [messageId]: '' }));
+    setError(null);
+
+    const res = await crystallizeChat({
+      topic,
+      content: crystallizeBody,
+      conversationId: crystallizeDraft.conversationId,
+      messageId,
+      source: 'llm-wiki-ui',
+      force: crystallizeForce,
+    });
+
+    setCrystallizeSubmitting(false);
+    setCrystallizingIds((prev) => {
+      const next = { ...prev };
+      delete next[messageId];
+      return next;
+    });
+
+    if (!res.success) {
+      if (res.duplicate) {
+        const when = res.existing?.createdAt
+          ? `（${new Date(res.existing.createdAt).toLocaleString('zh-CN')}）`
+          : '';
+        const tip =
+          res.matchBy === 'message_id'
+            ? `该条助手回复已结晶过${when}`
+            : `相同对话正文已结晶过${when}（主题不参与去重）`;
+        setCrystallizeDupInfo(`${tip}。如需重新沉淀，请勾选「强制再提交」。`);
+        setCrystallizeHints((prev) => ({ ...prev, [messageId]: '已结晶' }));
+        setError(null);
+        return;
+      }
+      setError(res.error ?? '结晶化失败');
+      setCrystallizeHints((prev) => ({
+        ...prev,
+        [messageId]: '失败',
+      }));
+      return;
+    }
+
+    setCrystallizeHints((prev) => ({
+      ...prev,
+      [messageId]: '已结晶',
+    }));
+    setCrystallizeDraft(null);
+    setCrystallizeTopic('');
+    setCrystallizeForce(false);
+    setCrystallizeDupInfo(null);
+  }, [crystallizeDraft, crystallizeTopic, crystallizeForce]);
+
   const messages = currentSession?.messages ?? [];
 
   return (
@@ -769,14 +946,77 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                         ) : null}
                       </>
                     )}
-                    <p
-                      className={cn(
-                        'text-[10px] mt-2 opacity-60',
-                        message.role === 'user' ? 'text-primary-foreground' : 'text-muted-foreground'
-                      )}
-                    >
-                      {formatTime(message.timestamp)}
-                    </p>
+                    {message.role === 'assistant' &&
+                    message.content &&
+                    message.content !== STREAMING_PLACEHOLDER &&
+                    !isStreamingReply ? (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+                        <span className="min-w-0 flex-1 opacity-70 leading-snug">
+                          本回复由大模型总结，仅供参考
+                        </span>
+                        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className={cn(
+                              'h-6 gap-1 rounded-full px-2.5 text-[11px] font-medium shadow-sm',
+                              crystallizeHints[message.id] === '已结晶' ||
+                                crystallizeHints[message.id] === '已提交'
+                                ? 'border border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
+                                : 'bg-primary text-primary-foreground hover:bg-primary/90',
+                              'disabled:opacity-70'
+                            )}
+                            disabled={Boolean(crystallizingIds[message.id])}
+                            onClick={() => openCrystallizeConfirm(message)}
+                            title="将本条对话沉淀到知识库"
+                          >
+                            {crystallizingIds[message.id] ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-3.5 w-3.5" />
+                            )}
+                            {crystallizingIds[message.id]
+                              ? '结晶中'
+                              : crystallizeHints[message.id] === '已结晶' ||
+                                  crystallizeHints[message.id] === '已提交'
+                                ? '已结晶'
+                                : '结晶'}
+                          </Button>
+                          {crystallizeHints[message.id] && (
+                            <span
+                              className={cn(
+                                'max-w-[9rem] truncate',
+                                crystallizeHints[message.id].includes('失败')
+                                  ? 'text-destructive'
+                                  : 'opacity-70'
+                              )}
+                              title={crystallizeHints[message.id]}
+                            >
+                              {crystallizeHints[message.id].includes('失败')
+                                ? '失败'
+                                : crystallizeHints[message.id].includes('结晶') ||
+                                    crystallizeHints[message.id].includes('提交')
+                                  ? '已结晶'
+                                  : crystallizeHints[message.id]}
+                            </span>
+                          )}
+                          <span className="opacity-60 tabular-nums">
+                            {formatTime(message.timestamp)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p
+                        className={cn(
+                          'text-[10px] mt-1.5 opacity-60',
+                          message.role === 'user'
+                            ? 'text-primary-foreground text-right'
+                            : 'text-muted-foreground'
+                        )}
+                      >
+                        {formatTime(message.timestamp)}
+                      </p>
+                    )}
                   </div>
                 </div>
                 );
@@ -867,6 +1107,121 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={crystallizeDraft !== null}
+        onOpenChange={(open) => {
+          if (!open) closeCrystallizeConfirm();
+        }}
+      >
+        <DialogContent className="max-w-[95vw] sm:max-w-md" onClose={closeCrystallizeConfirm}>
+          <DialogHeader>
+            <DialogTitle>确认结晶</DialogTitle>
+            <DialogDescription>
+              将本条对话沉淀到知识库（wiki/synthesis/sessions）。提交后由 Agent 异步写入。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="crystallize-topic">主题</Label>
+              <Input
+                id="crystallize-topic"
+                value={crystallizeTopic}
+                onChange={(e) => setCrystallizeTopic(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!crystallizeSubmitting && crystallizeTopic.trim()) {
+                      void confirmCrystallize();
+                    }
+                  }
+                }}
+                placeholder="结晶主题"
+                maxLength={80}
+                disabled={crystallizeSubmitting}
+                autoFocus
+              />
+            </div>
+            <div className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1.5 text-xs">
+              <span className="text-muted-foreground">会话</span>
+              <span className="truncate font-mono text-[11px]" title={crystallizeDraft?.conversationId}>
+                {crystallizeDraft?.conversationId ?? '—'}
+              </span>
+              <span className="text-muted-foreground">来源</span>
+              <span>llm-wiki-ui</span>
+              <span className="text-muted-foreground">目标</span>
+              <span>wiki/synthesis/sessions/</span>
+            </div>
+            {crystallizeDraft?.userQuestion ? (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">用户问题</p>
+                <p className="max-h-16 overflow-y-auto rounded-md border border-border/70 bg-muted/40 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
+                  {crystallizeDraft.userQuestion}
+                </p>
+              </div>
+            ) : null}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-muted-foreground">助手回复（完整正文）</p>
+                {crystallizeDraft ? (
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                    {crystallizeDraft.assistantContent.length} 字
+                  </span>
+                ) : null}
+              </div>
+              <p className="max-h-48 overflow-y-auto rounded-md border border-border/70 bg-muted/40 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
+                {crystallizeDraft?.assistantContent ?? ''}
+              </p>
+            </div>
+            {crystallizeDupInfo ? (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
+                {crystallizeDupInfo}
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                去重依据：对话正文字节指纹（MD5，不含主题）。仅改主题不会视为新内容。
+              </p>
+            )}
+            <label className="flex items-center gap-2 text-xs text-muted-foreground select-none">
+              <input
+                type="checkbox"
+                className="size-3.5 rounded border-border"
+                checked={crystallizeForce}
+                onChange={(e) => setCrystallizeForce(e.target.checked)}
+                disabled={crystallizeSubmitting}
+              />
+              强制再提交（忽略重复检测）
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeCrystallizeConfirm}
+              disabled={crystallizeSubmitting}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void confirmCrystallize()}
+              disabled={crystallizeSubmitting || !crystallizeTopic.trim()}
+              className="gap-1.5"
+            >
+              {crystallizeSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              {crystallizeSubmitting
+                ? '提交中…'
+                : crystallizeForce
+                  ? '强制结晶'
+                  : '确认结晶'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

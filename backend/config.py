@@ -66,3 +66,19 @@ ODOO_SSO_JWT_SECRET = os.getenv("ODOO_SSO_JWT_SECRET", "").strip()
 USER_MANAGEMENT_MODE = os.getenv("USER_MANAGEMENT_MODE", "local").strip().lower()
 if USER_MANAGEMENT_MODE not in ("local", "odoo"):
     USER_MANAGEMENT_MODE = "local"
+
+# Hermes Webhook（结晶化 crystallize，默认 8644）
+# POST {HERMES_WEBHOOK_URL}/webhooks/{HERMES_WEBHOOK_ROUTE}
+def _default_webhook_url() -> str:
+    import re
+
+    gw = HERMES_GATEWAY_URL.rstrip("/")
+    m = re.match(r"^(https?://.+):\d+$", gw)
+    if m:
+        return f"{m.group(1)}:8644"
+    return "http://localhost:8644"
+
+
+HERMES_WEBHOOK_URL = os.getenv("HERMES_WEBHOOK_URL", _default_webhook_url()).rstrip("/")
+HERMES_WEBHOOK_SECRET = os.getenv("HERMES_WEBHOOK_SECRET", "").strip()
+HERMES_WEBHOOK_ROUTE = os.getenv("HERMES_WEBHOOK_ROUTE", "crystallize").strip() or "crystallize"
