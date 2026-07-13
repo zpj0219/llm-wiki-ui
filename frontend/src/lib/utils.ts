@@ -32,6 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   'wiki/entities': '实体',
   'wiki/topics': '主题',
   'wiki/sources': '摘要',
+  'wiki/synthesis/sessions': '结晶',
 };
 
 /** 返回路径对应的中文类别标签，未匹配时返回原始名称 */
@@ -59,7 +60,8 @@ export function isSubCategory(relPath: string): boolean {
     p === 'raw/inbox' ||
     p === 'wiki/entities' ||
     p === 'wiki/topics' ||
-    p === 'wiki/sources'
+    p === 'wiki/sources' ||
+    p === 'wiki/synthesis/sessions'
   );
 }
 

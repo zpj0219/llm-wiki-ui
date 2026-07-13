@@ -132,7 +132,7 @@ const MODULES: ModuleDetail[] = [
         title: '浏览页面',
         icon: Eye,
         content: [
-          '左侧文件树按 entities（实体）、topics（主题）、sources（摘要）三大分类组织知识库页面。',
+          '左侧文件树按 entities（实体）、topics（主题）、sources（摘要）、synthesis/sessions（结晶）分类组织知识库页面。',
           '点击任意页面即可在右侧预览区查看渲染后的 Markdown 内容，支持表格、代码高亮等。',
           '顶部的面包屑导航展示当前页面在知识库中的路径结构。',
         ],

@@ -66,7 +66,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   const [error, setError] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['wiki']));
 
-  const WIKI_SUBS = ['wiki/entities', 'wiki/topics', 'wiki/sources'];
+  const WIKI_SUBS = ['wiki/entities', 'wiki/topics', 'wiki/sources', 'wiki/synthesis/sessions'];
 
   const openPage = useCallback(async (relPath: string) => {
     setSelectedPath(relPath);

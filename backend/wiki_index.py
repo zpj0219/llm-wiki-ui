@@ -94,6 +94,8 @@ def _wiki_node_group(rel_path: str) -> str:
         return "topics"
     if p.startswith("wiki/sources/"):
         return "sources"
+    if p.startswith("wiki/synthesis/sessions/"):
+        return "sessions"
     return "flat"
 
 

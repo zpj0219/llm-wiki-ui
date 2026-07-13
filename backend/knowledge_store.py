@@ -44,6 +44,7 @@ def ensure_kb_root() -> None:
         "wiki/entities",
         "wiki/topics",
         "wiki/sources",
+        "wiki/synthesis/sessions",
     ):
         (KNOWLEDGE_BASE_ROOT / sub).mkdir(parents=True, exist_ok=True)
 
@@ -113,6 +114,7 @@ def delete_entry(rel_path: str) -> None:
     top_categories = {
         "raw/originals", "raw/fulltext", "raw/inbox",
         "wiki/entities", "wiki/topics", "wiki/sources",
+        "wiki/synthesis", "wiki/synthesis/sessions",
         "raw", "wiki",
     }
     if rel in top_categories:
