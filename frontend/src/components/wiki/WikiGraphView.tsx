@@ -37,6 +37,8 @@ import {
 } from './obsidianGraphTheme';
 import { useGraphTheme } from './useGraphTheme';
 import { FilePreviewDialog } from './FilePreviewDialog';
+import { resolveWikiRelPath } from './wikiPathResolve';
+import { WIKI_OPEN_PAGE_EVENT } from './WikiMarkdownPreview';
 import {
   Loader2,
   ZoomIn,
@@ -186,9 +188,11 @@ export function WikiGraphView({
   const [hoverId, setHoverId] = useState<string | null>(null);
   /** 拖拽中的节点：用于强制高亮自身 + 一跳邻居 */
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  /** 双击预览：弹窗展示 wiki 文件（与工作台 Markdown 预览规则一致） */
-  const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  /** 双击预览栈：点实体链接再叠一层新弹窗 */
+  const [previewStack, setPreviewStack] = useState<string[]>([]);
+  /** 预览打开时避免图每帧 setState 拆掉弹窗内点击（mousedown→mouseup 间 DOM 被替换） */
+  const previewStackRef = useRef<string[]>([]);
+  previewStackRef.current = previewStack;
   const [showSettings, setShowSettings] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 1023px)').matches);
   const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0 });
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
@@ -264,7 +268,10 @@ export function WikiGraphView({
       const endMs = growthAnimationEndMs(revealSeqRef.current);
       const tick = () => {
         const elapsed = performance.now() - growthStartRef.current;
-        setGrowthFrame((n) => n + 1);
+        // 预览打开时不刷 growthFrame，避免无关重渲打断弹窗点击
+        if (previewStackRef.current.length === 0) {
+          setGrowthFrame((n) => n + 1);
+        }
         if (elapsed < endMs) {
           growthRafRef.current = requestAnimationFrame(tick);
         } else {
@@ -376,6 +383,12 @@ export function WikiGraphView({
       4
     ),
     [nodes, edges]
+  );
+
+  /** 预览弹窗路径种子：稳定引用，避免每次 render 新数组触发 entries 请求风暴 */
+  const previewKnownPaths = useMemo(
+    () => rawNodes.map((n) => n.relPath).filter(Boolean),
+    [rawNodes]
   );
 
   useEffect(() => {
@@ -567,6 +580,14 @@ export function WikiGraphView({
 
     const step = () => {
       if (!alive) return;
+
+      // 预览弹窗打开时冻结力学与 React 刷新。
+      // 否则每帧 setPositions 会重渲整树，弹窗内链接在 mousedown/up 之间被拆掉，
+      // 表现为「关系图还在动时点实体没反应，静止后才能点」。
+      if (previewStackRef.current.length > 0) {
+        raf = requestAnimationFrame(step);
+        return;
+      }
 
       // 生长：到期的点按当前结构落位后加入力学
       if (growthPlayingRef.current) spawnDueNodes();
@@ -927,11 +948,55 @@ export function WikiGraphView({
     [transform]
   );
 
-  const openNodePreview = useCallback((relPath: string) => {
-    if (!relPath) return;
-    setPreviewPath(relPath);
-    setPreviewOpen(true);
+  const rawNodesRef = useRef(rawNodes);
+  rawNodesRef.current = rawNodes;
+
+  const resolvePreviewPath = useCallback((relPath: string) => {
+    if (!relPath) return relPath;
+    const known = rawNodesRef.current.map((n) => n.relPath).filter(Boolean);
+    return known.length > 0 ? resolveWikiRelPath(relPath, known) : relPath;
   }, []);
+
+  const openNodePreview = useCallback(
+    (relPath: string) => {
+      if (!relPath) return;
+      const resolved = resolvePreviewPath(relPath);
+      setPreviewStack([resolved]);
+    },
+    [resolvePreviewPath]
+  );
+
+  const openLinkedPreview = useCallback(
+    (relPath: string) => {
+      if (!relPath) return;
+      const resolved = resolvePreviewPath(relPath);
+      setPreviewStack((stack) => {
+        if (stack.length === 0) return [resolved];
+        if (stack[stack.length - 1] === resolved) return stack;
+        return [...stack, resolved];
+      });
+    },
+    [resolvePreviewPath]
+  );
+
+  // 全局事件：弹窗内 wikilink 按钮一定能打开新层（不依赖 props 是否过期）
+  // 与 onOpenLinkedPage 双通道时：同一次点击两次 push 会用路径去重
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const path = (e as CustomEvent<string>).detail;
+      if (typeof path !== 'string' || !path) return;
+      // 仅当已有预览栈时，把事件当作“弹窗内跳转”
+      if (previewStackRef.current.length === 0) return;
+      const resolved = resolvePreviewPath(path);
+      setPreviewStack((stack) => {
+        if (stack.length === 0) return stack;
+        if (stack[stack.length - 1] === resolved) return stack;
+        return [...stack, resolved];
+      });
+    };
+    window.addEventListener(WIKI_OPEN_PAGE_EVENT, onOpen);
+    return () => window.removeEventListener(WIKI_OPEN_PAGE_EVENT, onOpen);
+  }, [resolvePreviewPath]);
 
   const onCanvasPointerUp = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current;
@@ -1362,14 +1427,31 @@ export function WikiGraphView({
         </aside>
       )}
 
-      <FilePreviewDialog
-        open={previewOpen}
-        relPath={previewPath}
-        onOpenChange={(open) => {
-          setPreviewOpen(open);
-          if (!open) setPreviewPath(null);
-        }}
-      />
+      {previewStack.map((path, index) => {
+        const isTop = index === previewStack.length - 1;
+        return (
+          <FilePreviewDialog
+            // index+path：同层不 remount；允许栈内同路径再次打开
+            key={`preview-${index}-${path}`}
+            open
+            relPath={path}
+            zIndex={80 + index * 10}
+            showBackdrop={isTop}
+            knownPaths={previewKnownPaths}
+            onOpenChange={(open) => {
+              if (!open) {
+                // 关掉该路径所在层及之上（避免 index 闭包过期）
+                setPreviewStack((stack) => {
+                  const i = stack.lastIndexOf(path);
+                  if (i < 0) return stack.slice(0, Math.max(0, stack.length - 1));
+                  return stack.slice(0, i);
+                });
+              }
+            }}
+            onOpenLinkedPage={openLinkedPreview}
+          />
+        );
+      })}
     </div>
   );
 }

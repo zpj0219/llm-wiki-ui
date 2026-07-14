@@ -7,13 +7,28 @@ type DialogProps = {
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
   className?: string;
+  /** 叠层顺序，默认 50 */
+  zIndex?: number;
+  /** 是否渲染半透明遮罩，默认 true */
+  showBackdrop?: boolean;
 };
 
-export function Dialog({ open, onOpenChange, children, className }: DialogProps) {
+export function Dialog({
+  open,
+  onOpenChange,
+  children,
+  className,
+  zIndex = 50,
+  showBackdrop = true,
+}: DialogProps) {
+  // 父组件每帧重渲时 onOpenChange 常是新引用；用 ref 避免 effect 反复装卸
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onOpenChange(false);
+      if (e.key === 'Escape') onOpenChangeRef.current(false);
     };
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', onKey);
@@ -21,18 +36,23 @@ export function Dialog({ open, onOpenChange, children, className }: DialogProps)
       document.body.style.overflow = '';
       window.removeEventListener('keydown', onKey);
     };
-  }, [open, onOpenChange]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/50 backdrop-blur-[1px]"
-        aria-label="关闭"
-        onClick={() => onOpenChange(false)}
-      />
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
+      {showBackdrop ? (
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/50 backdrop-blur-[1px]"
+          aria-label="关闭"
+          onClick={() => onOpenChange(false)}
+        />
+      ) : (
+        // 下层弹窗：透明拦截层，不叠加颜色；点击不关闭（只关顶层）
+        <div className="absolute inset-0 bg-transparent" aria-hidden />
+      )}
       <div className={cn('relative z-10 w-full max-w-lg', className)}>{children}</div>
     </div>
   );

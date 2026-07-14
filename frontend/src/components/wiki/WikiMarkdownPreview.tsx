@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { memo, useMemo, useRef, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -10,8 +10,66 @@ function preprocessWikilinks(content: string): string {
   return content.replace(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (_m, target, alias) => {
     const label = alias || target;
     const enc = encodeURIComponent(String(target).trim());
-    return `[${label}](wiki://${enc})`;
+    return `[${label}](/__wiki__/${enc})`;
   });
+}
+
+
+/** 解析预览内 wikilink 的 href（兼容相对/绝对 /__wiki__/ 与 wiki://） */
+function parseWikiHref(href: string | undefined | null): string | null {
+  if (!href) return null;
+  const raw = href.trim();
+
+  // 相对路径：/__wiki__/Title
+  if (raw.startsWith('/__wiki__/')) {
+    try {
+      return decodeURIComponent(raw.slice('/__wiki__/'.length));
+    } catch {
+      return raw.slice('/__wiki__/'.length);
+    }
+  }
+
+  // 绝对 URL 被浏览器/解析器补全：http://localhost:3000/__wiki__/Title
+  const absIdx = raw.indexOf('/__wiki__/');
+  if (absIdx >= 0) {
+    const rest = raw.slice(absIdx + '/__wiki__/'.length);
+    // 去掉 hash/query
+    const pathOnly = rest.split('#')[0]!.split('?')[0]!;
+    try {
+      return decodeURIComponent(pathOnly);
+    } catch {
+      return pathOnly;
+    }
+  }
+
+  if (raw.startsWith('wiki://')) {
+    try {
+      return decodeURIComponent(raw.slice('wiki://'.length));
+    } catch {
+      return raw.slice('wiki://'.length);
+    }
+  }
+  return null;
+}
+
+/** wikilink 目标 → 粗 relPath（再由 openPage / 弹窗 resolve 成真实路径） */
+function wikiTargetToRelPath(target: string): string {
+  const t = target.trim().replace(/\\/g, '/');
+  if (!t) return t;
+  if (t.startsWith('wiki/')) return t.endsWith('.md') ? t : `${t}.md`;
+  if (t.includes('/')) {
+    const withWiki = t.startsWith('wiki/') ? t : `wiki/${t}`;
+    return withWiki.endsWith('.md') ? withWiki : `${withWiki}.md`;
+  }
+  return `wiki/${t}.md`;
+}
+
+/** 全局打开事件：关系图弹窗等场景不依赖 props 穿透也能收到 */
+export const WIKI_OPEN_PAGE_EVENT = 'llm-wiki:open-preview-page';
+
+export function emitWikiOpenPage(relPath: string): void {
+  if (!relPath || typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(WIKI_OPEN_PAGE_EVENT, { detail: relPath }));
 }
 
 function preprocessHighlights(content: string): string {
@@ -35,6 +93,18 @@ const DATE_LIKE_KEYS = new Set([
 
 /** Keys whose values should render as badges */
 const BADGE_LIKE_KEYS = new Set(['tags', 'tag', 'aliases', 'alias', 'categories', 'category']);
+
+/** 可作为文档链接点击的 frontmatter 字段 */
+const LINK_LIKE_KEYS = new Set([
+  'sources',
+  'source',
+  'source_file',
+  'related',
+  'see_also',
+  'see-also',
+  'refs',
+  'references',
+]);
 
 /**
  * Parse Obsidian-style YAML frontmatter (between leading `---` fences).
@@ -124,9 +194,11 @@ export function parseFrontmatter(raw: string): FrontmatterData {
 
 // ── Frontmatter display component ──────────────────────────────────
 
-function FrontmatterCard({ fields }: { fields: Record<string, unknown> }) {
+function FrontmatterCard({ fields, onOpenPage }: { fields: Record<string, unknown>; onOpenPage?: (relPath: string) => void }) {
   const entries = Object.entries(fields);
-  const [collapsed, setCollapsed] = useState(true);
+  const hasLinks = entries.some(([k]) => LINK_LIKE_KEYS.has(k.toLowerCase()));
+  // 有 sources 等可点字段时默认展开，避免用户找不到
+  const [collapsed, setCollapsed] = useState(!hasLinks);
 
   if (entries.length === 0) return null;
 
@@ -184,7 +256,44 @@ function FrontmatterCard({ fields }: { fields: Record<string, unknown> }) {
                       {String(rawValue)}
                     </span>
                   ) : Array.isArray(rawValue) ? (
-                    (rawValue as string[]).join(', ')
+                    LINK_LIKE_KEYS.has(key.toLowerCase()) && onOpenPage ? (
+                      <span className="flex flex-wrap gap-1.5">
+                        {(rawValue as string[]).map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            className="text-left text-blue-600 hover:underline dark:text-blue-400"
+                            title="打开关联文档"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const p = String(v);
+                              onOpenPage?.(p);
+                              emitWikiOpenPage(p);
+                            }}
+                          >
+                            {String(v)}
+                          </button>
+                        ))}
+                      </span>
+                    ) : (
+                      (rawValue as string[]).join(', ')
+                    )
+                  ) : LINK_LIKE_KEYS.has(key.toLowerCase()) && onOpenPage ? (
+                    <button
+                      type="button"
+                      className="text-left text-blue-600 hover:underline dark:text-blue-400"
+                      title="打开关联文档"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const p = String(rawValue);
+                        onOpenPage?.(p);
+                        emitWikiOpenPage(p);
+                      }}
+                    >
+                      {String(rawValue)}
+                    </button>
                   ) : (
                     String(rawValue)
                   )}
@@ -258,7 +367,7 @@ type WikiMarkdownPreviewProps = {
   onOpenPage?: (relPath: string) => void;
 };
 
-export function WikiMarkdownPreview({ content, onOpenPage }: WikiMarkdownPreviewProps) {
+function WikiMarkdownPreviewInner({ content, onOpenPage }: WikiMarkdownPreviewProps) {
   const { fields, body } = useMemo(() => parseFrontmatter(content), [content]);
 
   const processed = useMemo(
@@ -268,10 +377,24 @@ export function WikiMarkdownPreview({ content, onOpenPage }: WikiMarkdownPreview
 
   return (
     <div className="prose-wiki">
-      <FrontmatterCard fields={fields} />
+      <FrontmatterCard fields={fields} onOpenPage={onOpenPage} />
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
+        // 允许内部 wikilink 协议；默认会把非 http(s)/mailto 清空导致 href=""
+        urlTransform={(url) => {
+          // 绝对化后的内部链接仍保留（避免 href 被清掉）
+          if (url.startsWith('wiki://') || url.startsWith('/__wiki__/') || url.includes('/__wiki__/')) {
+            return url;
+          }
+          // 复用默认安全策略：危险协议变空
+          const colon = url.indexOf(':');
+          if (colon === -1) return url;
+          const before = url.slice(0, colon);
+          if (/^(https?|ircs?|mailto|xmpp)$/i.test(before)) return url;
+          if (before.includes('/') || before.includes('?') || before.includes('#')) return url;
+          return '';
+        }}
         components={{
           table: ({ children, ...tableProps }: any) => (
             <DraggableTable {...tableProps}>
@@ -279,20 +402,30 @@ export function WikiMarkdownPreview({ content, onOpenPage }: WikiMarkdownPreview
             </DraggableTable>
           ),
           a: ({ href, children, ...props }: any) => {
-            if (href?.startsWith('wiki://')) {
-              const target = decodeURIComponent(href.slice(7));
+            // 兼容相对/绝对 /__wiki__/ 与 wiki://
+            const wikiTarget = parseWikiHref(href);
+            if (wikiTarget != null) {
+              const relPath = wikiTargetToRelPath(wikiTarget);
               return (
                 <button
                   type="button"
+                  data-wiki-link={relPath}
                   className="text-blue-600 hover:underline dark:text-blue-400 bg-transparent border-0 p-0 cursor-pointer font-inherit text-inherit"
-                  onClick={() => {
-                    const rel = target.includes('/') ? `wiki/${target}` : `wiki/${target}.md`;
-                    onOpenPage?.(rel.endsWith('.md') ? rel : `${rel}.md`);
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // props 回调（工作台）+ 全局事件（关系图弹窗）双通道
+                    onOpenPage?.(relPath);
+                    emitWikiOpenPage(relPath);
                   }}
                 >
                   {children}
                 </button>
               );
+            }
+            // 空 href 是被 urlTransform 清掉的危险协议，绝不能当站内链接
+            if (!href) {
+              return <span className="text-blue-600 dark:text-blue-400">{children}</span>;
             }
             return (
               <a href={href} target="_blank" rel="noreferrer" {...props}>
@@ -307,3 +440,6 @@ export function WikiMarkdownPreview({ content, onOpenPage }: WikiMarkdownPreview
     </div>
   );
 }
+
+/** 内容与 onOpenPage 不变时跳过重渲，避免父级高频刷新拆掉点击中的链接按钮 */
+export const WikiMarkdownPreview = memo(WikiMarkdownPreviewInner);

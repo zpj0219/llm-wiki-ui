@@ -15,6 +15,7 @@ import type { WikiFileEntry } from '@shared/types';
 import { WikiFileTree } from './WikiFileTree';
 import { WikiMarkdownPreview } from './WikiMarkdownPreview';
 import { WikiPathBreadcrumb } from './WikiPathBreadcrumb';
+import { resolveWikiRelPath } from './wikiPathResolve';
 import { Sheet, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet';
 
 type WikiWorkbenchProps = {
@@ -69,25 +70,42 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   const WIKI_SUBS = ['wiki/entities', 'wiki/topics', 'wiki/sources', 'wiki/synthesis/sessions'];
 
   const openPage = useCallback(async (relPath: string) => {
-    setSelectedPath(relPath);
+    // 预览里的 [[实体]] 常被编成 wiki/标题.md，需按文件树解析到真实路径
+    const knownMd = files
+      .filter((f) => !f.isDirectory && f.relPath.replace(/\\/g, '/').endsWith('.md'))
+      .map((f) => f.relPath);
+    const resolved = knownMd.length > 0 ? resolveWikiRelPath(relPath, knownMd) : relPath;
+
+    setSelectedPath(resolved);
+    // 展开父目录，方便在树里看到选中项
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      next.add('wiki');
+      const parts = resolved.replace(/\\/g, '/').split('/');
+      for (let i = 1; i < parts.length; i++) {
+        next.add(parts.slice(0, i).join('/'));
+      }
+      return next;
+    });
+
     setLoading(true);
     setError(null);
-    const isWiki = isWikiDirMarkdown(relPath);
+    const isWiki = isWikiDirMarkdown(resolved);
     try {
-      const res = await readWikiPage(relPath);
+      const res = await readWikiPage(resolved);
       const text = res.success && res.content != null ? res.content : '';
       if (!res.success) setError(res.error ?? '读取失败');
       setDraft(text);
       setSavedContent(text);
       if (isWiki) {
-        setBacklinks(await getWikiBacklinks(relPath));
+        setBacklinks(await getWikiBacklinks(resolved));
       } else {
         setBacklinks([]);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [files]);
 
   const refreshTree = useCallback(async () => {
     const entriesRes = await listWikiEntries();
