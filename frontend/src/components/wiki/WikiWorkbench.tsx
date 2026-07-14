@@ -108,7 +108,8 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
   }, [files]);
 
   const refreshTree = useCallback(async () => {
-    const entriesRes = await listWikiEntries();
+    // 用户点刷新 / refreshKey 变化时应拿最新文件树
+    const entriesRes = await listWikiEntries({ force: true });
     if (entriesRes.success) {
       setFiles(entriesRes.files);
     } else {

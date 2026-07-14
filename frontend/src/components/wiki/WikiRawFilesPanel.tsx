@@ -383,7 +383,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [entriesRes, statusRes] = await Promise.all([
-      listWikiEntries(),
+      listWikiEntries({ force: true }),
       getOriginalsStatus(),
     ]);
     if (entriesRes.success) {

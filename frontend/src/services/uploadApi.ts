@@ -1,6 +1,6 @@
 import { getAuthHeaders } from './authSession';
 import { API_BASE } from './api';
-import { listWikiEntries } from './wikiApi';
+import { invalidateWikiEntriesCache, listWikiEntries } from './wikiApi';
 
 export type OriginalsDirEntry = {
   relPath: string;
@@ -114,6 +114,7 @@ export async function uploadOriginal(
     if (data.success === false && data.reason === 'duplicate') {
       return { success: false, reason: 'duplicate', message: data.message, existingPath: data.existingPath };
     }
+    invalidateWikiEntriesCache();
     return {
       success: true,
       relPath: data.relPath,
@@ -169,6 +170,7 @@ export function uploadOriginalWithProgress(
           if (data.success === false && data.reason === 'duplicate') {
             resolve({ success: false, reason: 'duplicate', message: data.message, existingPath: data.existingPath });
           } else {
+            invalidateWikiEntriesCache();
             resolve({
               success: true,
               relPath: data.relPath,

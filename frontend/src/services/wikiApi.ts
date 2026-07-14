@@ -10,20 +10,64 @@ import type {
 
 type ApiResult<T> = { success: boolean } & T;
 
-export async function listWikiEntries(): Promise<{
+/** 进程级 entries 缓存：避免多面板/弹窗并发或 effect 抖动重复打 /api/wiki/entries */
+let wikiEntriesCache: {
+  success: boolean;
+  files: WikiFileEntry[];
+  root?: string;
+  error?: string;
+} | null = null;
+let wikiEntriesPromise: Promise<{
+  success: boolean;
+  files: WikiFileEntry[];
+  root?: string;
+  error?: string;
+}> | null = null;
+
+export function invalidateWikiEntriesCache(): void {
+  wikiEntriesCache = null;
+  wikiEntriesPromise = null;
+}
+
+export async function listWikiEntries(options?: {
+  /** 跳过缓存强制刷新（上传/删除/索引刷新后） */
+  force?: boolean;
+}): Promise<{
   success: boolean;
   files: WikiFileEntry[];
   root?: string;
   error?: string;
 }> {
-  try {
-    const res = await requestJson<ApiResult<{ files: WikiFileEntry[]; root: string }>>(
-      '/api/wiki/entries'
-    );
-    return { success: true, files: res.files, root: res.root };
-  } catch (e) {
-    return { success: false, files: [], error: e instanceof Error ? e.message : String(e) };
+  if (!options?.force) {
+    if (wikiEntriesCache) return wikiEntriesCache;
+    if (wikiEntriesPromise) return wikiEntriesPromise;
+  } else {
+    wikiEntriesCache = null;
+    wikiEntriesPromise = null;
   }
+
+  wikiEntriesPromise = (async () => {
+    try {
+      const res = await requestJson<ApiResult<{ files: WikiFileEntry[]; root: string }>>(
+        '/api/wiki/entries'
+      );
+      const payload = { success: true as const, files: res.files, root: res.root };
+      wikiEntriesCache = payload;
+      return payload;
+    } catch (e) {
+      // 失败不缓存，允许下次重试
+      wikiEntriesCache = null;
+      return {
+        success: false as const,
+        files: [] as WikiFileEntry[],
+        error: e instanceof Error ? e.message : String(e),
+      };
+    } finally {
+      wikiEntriesPromise = null;
+    }
+  })();
+
+  return wikiEntriesPromise;
 }
 
 export async function readWikiPage(relPath: string): Promise<{
@@ -50,6 +94,7 @@ export async function writeWikiPage(
       method: 'PUT',
       body: JSON.stringify({ content }),
     });
+    invalidateWikiEntriesCache();
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : String(e) };
@@ -91,6 +136,7 @@ export async function getWikiStats(): Promise<WikiStats> {
 
 export async function refreshWikiIndex(): Promise<void> {
   await requestJson('/api/wiki/refresh', { method: 'POST' });
+  invalidateWikiEntriesCache();
 }
 
 export async function getOriginalsStatus(): Promise<{
@@ -125,6 +171,7 @@ export async function deleteWikiEntry(relPath: string): Promise<{ success: boole
     await requestJson(`/api/wiki/pages/${encodeURIComponent(relPath)}`, {
       method: 'DELETE',
     });
+    invalidateWikiEntriesCache();
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : String(e) };

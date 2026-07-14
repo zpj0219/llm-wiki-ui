@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -573,12 +573,21 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
 
 
 
-  // 加载会话后查询哪些助手消息已结晶
-  useEffect(() => {
-    if (!currentSession?.messages?.length) return;
-    const assistantIds = currentSession.messages
+  // 仅用消息 id 签名作依赖：流式 delta 会每 token 换新 messages 数组，
+  // 若依赖 messages 本身会把 /api/chat/crystallize/lookup 打成请求风暴。
+  const crystallizeLookupKey = useMemo(() => {
+    if (!currentSession?.messages?.length) return '';
+    return currentSession.messages
       .filter((m) => m.role === 'assistant' && m.content && m.content !== STREAMING_PLACEHOLDER)
-      .map((m) => m.id);
+      .map((m) => m.id)
+      .join('|');
+  }, [currentSession?.messages]);
+
+  useEffect(() => {
+    if (!crystallizeLookupKey) return;
+    // 流式输出过程中内容未定稿，等结束后再查一次即可
+    if (streamingSessionId && streamingSessionId === currentSession?.id) return;
+    const assistantIds = crystallizeLookupKey.split('|').filter(Boolean);
     if (!assistantIds.length) return;
     let cancelled = false;
     void lookupCrystallize({ messageIds: assistantIds }).then((res) => {
@@ -594,7 +603,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [currentSession?.id, currentSession?.messages]);
+  }, [crystallizeLookupKey, currentSession?.id, streamingSessionId]);
 
   const openCrystallizeConfirm = useCallback(
     (message: ChatMessage) => {
