@@ -40,6 +40,7 @@ import { useGraphTheme } from './useGraphTheme';
 import { FilePreviewDialog } from './FilePreviewDialog';
 import { resolveWikiRelPath } from './wikiPathResolve';
 import { WIKI_OPEN_PAGE_EVENT } from './WikiMarkdownPreview';
+import { useGraphTouchGestures } from './useGraphTouchGestures';
 import {
   Loader2,
   ZoomIn,
@@ -267,6 +268,8 @@ export function WikiGraphView({
   const alphaRef = useRef(1);
   const panRef = useRef({ active: false, x: 0, y: 0, tx: 0, ty: 0 });
   const dragRef = useRef<{ id: string; x: number; y: number; moved: boolean } | null>(null);
+  /** 触摸节点拖动状态独立于鼠标 dragRef，避免两套输入互相污染。 */
+  const touchDraggingRef = useRef(false);
   /** 手动识别双击：pointer capture 时原生 dblclick 有时不可靠 */
   const lastNodeTapRef = useRef<{ id: string; t: number } | null>(null);
   /** 拖拽波源：松手后仍保留一段时间，远跳邻居按延时陆续受力 */
@@ -762,7 +765,7 @@ export function WikiGraphView({
       if (growthPlayingRef.current) spawnDueNodes();
 
       // 仅真正拖动（moved）才进入拖拽力学；轻点不抬 alpha / 不传导
-      const dragging = Boolean(dragRef.current?.moved);
+      const dragging = Boolean(dragRef.current?.moved || touchDraggingRef.current);
       let alpha = alphaRef.current;
       if (dragging) alpha = Math.max(alpha, 0.25);
 
@@ -1171,6 +1174,104 @@ export function WikiGraphView({
     [resolvePreviewPath]
   );
 
+  const touchClientToViewPoint = useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    return svg ? clientToViewBox(clientX, clientY, svg) : null;
+  }, []);
+
+  const findTouchNodeAtClientPoint = useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const viewScale = Math.min(rect.width / LAYOUT.w, rect.height / LAYOUT.h) || 1;
+    const transform = transformRef.current;
+    const point = clientToGraph(clientX, clientY, svg, transform);
+    // 约 22px 半径的逻辑触摸区；视觉节点仍保持原尺寸，重叠时选择最近节点。
+    const hitRadius = 22 / Math.max(0.01, viewScale * transform.scale);
+    let nearestId: string | null = null;
+    let nearestDistance = hitRadius;
+    for (const node of simRef.current) {
+      const distance = Math.hypot(node.x - point.x, node.y - point.y);
+      if (distance <= nearestDistance) {
+        nearestDistance = distance;
+        nearestId = node.id;
+      }
+    }
+    return nearestId;
+  }, []);
+
+  const touchGestures = useGraphTouchGestures({
+    svgRef,
+    getTransform: () => transformRef.current,
+    clientToViewPoint: touchClientToViewPoint,
+    findNodeAtClientPoint: findTouchNodeAtClientPoint,
+    updateTransform: (next) => {
+      growthAutoZoomRef.current = false;
+      cancelAnimationFrame(zoomAnimRafRef.current);
+      transformRef.current = next;
+      setTransform(next);
+    },
+    onInteractionStart: () => {
+      if (growthPlayingRef.current) {
+        finishGrowthImmediately(nodes, edges);
+      }
+    },
+    onNodeSelect: (nodeId) => {
+      setSelectedId(nodeId);
+    },
+    onNodeTap: (nodeId) => {
+      setSelectedId(nodeId);
+      if (prefs.localMode) setFocusId(nodeId);
+      centerOnNode(nodeId);
+    },
+    onNodeDoubleTap: (nodeId) => {
+      const node = simRef.current.find((item) => item.id === nodeId);
+      openNodePreview(node?.relPath ?? nodeId);
+    },
+    onNodeDragStart: (nodeId) => {
+      const node = simRef.current.find((item) => item.id === nodeId);
+      touchDraggingRef.current = true;
+      impulseRef.current = { id: nodeId, startMs: performance.now() };
+      setDraggingId(nodeId);
+      setHoverId(nodeId);
+      alphaRef.current = Math.max(alphaRef.current, 0.28);
+      if (node) {
+        node.vx = 0;
+        node.vy = 0;
+        node.fixed = true;
+      }
+      if (layoutSettledRef.current) {
+        layoutSettledRef.current = false;
+        setLayoutSettled(false);
+      }
+    },
+    onNodeDragMove: (nodeId, clientX, clientY) => {
+      const svg = svgRef.current;
+      const node = simRef.current.find((item) => item.id === nodeId);
+      if (!svg || !node) return;
+      const point = clientToGraph(clientX, clientY, svg, transformRef.current);
+      node.x = point.x;
+      node.y = point.y;
+      node.vx = 0;
+      node.vy = 0;
+      node.fixed = true;
+      alphaRef.current = Math.max(alphaRef.current, 0.28);
+      setPositions(new Map(simToPositionMap(simRef.current)));
+    },
+    onNodeDragEnd: (nodeId, moved) => {
+      const node = simRef.current.find((item) => item.id === nodeId);
+      if (node && moved) {
+        node.fixed = true;
+        node.vx = 0;
+        node.vy = 0;
+        alphaRef.current = Math.max(alphaRef.current, 0.35);
+      }
+      touchDraggingRef.current = false;
+      setDraggingId(null);
+      setHoverId((current) => (current === nodeId ? null : current));
+    },
+  });
+
   // 全局事件：弹窗内 wikilink 按钮一定能打开新层（不依赖 props 是否过期）
   // 与 onOpenLinkedPage 双通道时：同一次点击两次 push 会用路径去重
   useEffect(() => {
@@ -1256,6 +1357,70 @@ export function WikiGraphView({
     [prefs.localMode, centerOnNode]
   );
 
+  const handleCanvasPointerDown = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType === 'touch') {
+        touchGestures.onPointerDown(event);
+        return;
+      }
+      onCanvasPointerDown(event);
+    },
+    [onCanvasPointerDown, touchGestures],
+  );
+
+  const handleCanvasPointerMove = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType === 'touch') {
+        touchGestures.onPointerMove(event);
+        return;
+      }
+      onCanvasPointerMove(event);
+    },
+    [onCanvasPointerMove, touchGestures],
+  );
+
+  const handleCanvasPointerUp = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType === 'touch') {
+        touchGestures.onPointerUp(event);
+        return;
+      }
+      onCanvasPointerUp(event);
+    },
+    [onCanvasPointerUp, touchGestures],
+  );
+
+  const handleCanvasPointerCancel = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType === 'touch') {
+        touchGestures.onPointerCancel(event);
+        return;
+      }
+      onCanvasPointerUp(event);
+    },
+    [onCanvasPointerUp, touchGestures],
+  );
+
+  const handleCanvasPointerLeave = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      // 触摸已使用 pointer capture；离开 SVG 不应提前结束手势。
+      if (event.pointerType !== 'touch') onCanvasPointerUp(event);
+    },
+    [onCanvasPointerUp],
+  );
+
+  const handleNodePointerDown = useCallback(
+    (event: React.PointerEvent<SVGGElement>, nodeId: string) => {
+      if (event.pointerType === 'touch') {
+        event.stopPropagation();
+        touchGestures.onPointerDown(event);
+        return;
+      }
+      onNodePointerDown(event, nodeId);
+    },
+    [onNodePointerDown, touchGestures],
+  );
+
   const updatePref = <K extends keyof GraphPrefs>(key: K, value: GraphPrefs[K]) => {
     setPrefs((p) => ({ ...p, [key]: value }));
     if (key === 'linkDistance' || key === 'repulsion') alphaRef.current = 1;
@@ -1301,14 +1466,14 @@ export function WikiGraphView({
             onBlur={() => {
               searchEditingRef.current = false;
             }}
-            className="h-8 w-36 text-sm"
+            className="h-10 w-36 text-sm sm:h-8"
           />
           <div className="flex gap-0.5">
             <Button
               type="button"
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-10 w-10 sm:h-8 sm:w-8"
               onClick={() => {
                 growthAutoZoomRef.current = false;
                 cancelAnimationFrame(zoomAnimRafRef.current);
@@ -1325,7 +1490,7 @@ export function WikiGraphView({
               type="button"
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-10 w-10 sm:h-8 sm:w-8"
               onClick={() => {
                 growthAutoZoomRef.current = false;
                 cancelAnimationFrame(zoomAnimRafRef.current);
@@ -1342,7 +1507,7 @@ export function WikiGraphView({
               type="button"
               variant="outline"
               size="icon"
-              className="h-8 w-8"
+              className="h-10 w-10 sm:h-8 sm:w-8"
               onClick={() => {
                 growthAutoZoomRef.current = false;
                 cancelAnimationFrame(zoomAnimRafRef.current);
@@ -1353,7 +1518,7 @@ export function WikiGraphView({
             >
               <Maximize2 className="h-4 w-4" />
             </Button>
-            <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={reheatLayout} title="重新布局">
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" onClick={reheatLayout} title="重新布局">
               <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
@@ -1361,7 +1526,7 @@ export function WikiGraphView({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8"
+            className="h-10 sm:h-8"
             disabled={growthPlaying || nodes.length === 0}
             onClick={() => playGrowthAnimation(nodes, edges, true)}
             title="按顺序逐个显示节点并建立连线"
@@ -1369,7 +1534,7 @@ export function WikiGraphView({
             <Play className="h-3.5 w-3.5 mr-1" />
             播放生长动画
           </Button>
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 ml-auto" onClick={() => setShowSettings((s) => !s)}>
+          <Button type="button" variant="ghost" size="icon" className="h-10 w-10 ml-auto sm:h-8 sm:w-8" onClick={() => setShowSettings((s) => !s)}>
             <Settings2 className="h-4 w-4" />
           </Button>
         </div>
@@ -1387,10 +1552,11 @@ export function WikiGraphView({
               className="absolute inset-0 w-full h-full touch-none select-none"
               style={{ background: graphTheme.canvas }}
               onWheel={onWheel}
-              onPointerDown={onCanvasPointerDown}
-              onPointerMove={onCanvasPointerMove}
-              onPointerUp={onCanvasPointerUp}
-              onPointerLeave={onCanvasPointerUp}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={handleCanvasPointerUp}
+              onPointerCancel={handleCanvasPointerCancel}
+              onPointerLeave={handleCanvasPointerLeave}
             >
               <g transform={`translate(${transform.tx} ${transform.ty}) scale(${transform.scale})`}>
                 {edges.map((e) => {
@@ -1487,11 +1653,19 @@ export function WikiGraphView({
                       onMouseLeave={() => {
                         if (!dragRef.current) setHoverId(null);
                       }}
-                      onPointerDown={(ev) => onNodePointerDown(ev, node.id)}
-                      onClick={() => onNodeClick(node.id)}
+                      onPointerDown={(ev) => handleNodePointerDown(ev, node.id)}
+                      onClick={(ev) => {
+                        if (touchGestures.shouldSuppressClick()) {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          return;
+                        }
+                        onNodeClick(node.id);
+                      }}
                       onDoubleClick={(ev) => {
                         ev.preventDefault();
                         ev.stopPropagation();
+                        if (touchGestures.shouldSuppressClick()) return;
                         openNodePreview(node.relPath);
                       }}
                     >
@@ -1536,7 +1710,10 @@ export function WikiGraphView({
               已选：<strong>{selectedNode.label}</strong>（双击预览）
             </span>
           ) : (
-            <span>单击选中 · 双击打开 · 拖拽节点 · 滚轮以光标为中心缩放</span>
+            <>
+              <span className="hidden sm:inline">单击选中 · 双击打开 · 拖拽节点 · 滚轮以光标为中心缩放</span>
+              <span className="sm:hidden">轻点选中 · 双击打开 · 单指平移/拖点 · 双指缩放</span>
+            </>
           )}
         </div>
       </div>
