@@ -144,6 +144,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const [crystallizeSubmitting, setCrystallizeSubmitting] = useState(false);
   const [crystallizeForce, setCrystallizeForce] = useState(false);
   const [crystallizeDupInfo, setCrystallizeDupInfo] = useState<string | null>(null);
+  const [crystallizeError, setCrystallizeError] = useState<string | null>(null);
   const sending = streamingSessionId != null;
 
   /** 消息是否正在流式生成 — 由后端占位符约定驱动，切换会话/刷新后也能正确展示 */
@@ -643,9 +644,9 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
           ? '该条回复此前已提交过结晶，可修改主题后强制再提交。'
           : null
       );
-      setError(null);
+      setCrystallizeError(null);
     },
-    [currentSession, crystallizingIds, crystallizeSubmitting]
+    [currentSession, crystallizingIds, crystallizeSubmitting, crystallizeHints]
   );
 
   const closeCrystallizeConfirm = useCallback(() => {
@@ -654,13 +655,14 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     setCrystallizeTopic('');
     setCrystallizeForce(false);
     setCrystallizeDupInfo(null);
+    setCrystallizeError(null);
   }, [crystallizeSubmitting]);
 
   const confirmCrystallize = useCallback(async () => {
     if (!crystallizeDraft) return;
     const topic = crystallizeTopic.trim();
     if (!topic) {
-      setError('请填写结晶主题');
+      setCrystallizeError('请填写结晶主题');
       return;
     }
 
@@ -677,7 +679,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     setCrystallizeSubmitting(true);
     setCrystallizingIds((prev) => ({ ...prev, [messageId]: true }));
     setCrystallizeHints((prev) => ({ ...prev, [messageId]: '' }));
-    setError(null);
+    setCrystallizeError(null);
 
     const res = await crystallizeChat({
       topic,
@@ -706,10 +708,10 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             : `相同对话正文已结晶过${when}（主题不参与去重）`;
         setCrystallizeDupInfo(`${tip}。如需重新沉淀，请勾选「强制再提交」。`);
         setCrystallizeHints((prev) => ({ ...prev, [messageId]: '已结晶' }));
-        setError(null);
+        setCrystallizeError(null);
         return;
       }
-      setError(res.error ?? '结晶化失败');
+      setCrystallizeError(res.error ?? '结晶化失败');
       setCrystallizeHints((prev) => ({
         ...prev,
         [messageId]: '失败',
@@ -725,6 +727,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     setCrystallizeTopic('');
     setCrystallizeForce(false);
     setCrystallizeDupInfo(null);
+    setCrystallizeError(null);
   }, [crystallizeDraft, crystallizeTopic, crystallizeForce]);
 
   const messages = currentSession?.messages ?? [];
@@ -1114,8 +1117,9 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
         onOpenChange={(open) => {
           if (!open) closeCrystallizeConfirm();
         }}
+        className="max-w-3xl"
       >
-        <DialogContent className="max-h-[min(92vh,720px)] w-full max-w-[95vw] sm:max-w-md" onClose={closeCrystallizeConfirm}>
+        <DialogContent className="max-h-[min(94vh,880px)] w-full max-w-[95vw] sm:max-w-3xl" onClose={closeCrystallizeConfirm}>
           <DialogHeader>
             <DialogTitle>确认结晶</DialogTitle>
             <DialogDescription>
@@ -1193,6 +1197,11 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
               />
               强制再提交（忽略重复检测）
             </label>
+            {crystallizeError ? (
+              <div className="shrink-0 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-xs leading-relaxed text-destructive">
+                {crystallizeError}
+              </div>
+            ) : null}
           </DialogBody>
           <DialogFooter>
             <Button
