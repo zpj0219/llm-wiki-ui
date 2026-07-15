@@ -71,24 +71,16 @@ const LAYOUT: { w: number; h: number } = { w: BASE_LAYOUT.w, h: BASE_LAYOUT.h };
 const LABEL_MIN_ZOOM = 0.55;
 
 /**
- * 生长阶段自动缩放：
- * - 早期（少量点）放大，让节点可读
- * - 随点数推进逐渐缩小
- * - 收束到 1.0 = 看清整块 viewBox / 圆形布局全貌
+ * 生长阶段自动缩放：按时间进度 0→1 做匀速线性插值。
+ * 无 ease / 弹簧 / 变速；不按点数阶梯改目标。
  */
-function growthAutoScaleForCount(visibleCount: number, totalCount: number): number {
-  const n = Math.max(1, visibleCount);
-  const total = Math.max(n, totalCount, 1);
-  // 进度 0→1：用平方缓入，前半段保持放大，后半段加速拉远
-  const t = Math.min(1, (n - 1) / Math.max(1, total - 1));
-  const eased = t * t;
-
-  // 极少点时额外抬一点（1–3 个点更清晰）
-  const startBoost = n <= 3 ? 3.05 : n <= 8 ? 2.55 : 2.2;
-  const start = Math.min(3.2, startBoost);
-  const end = 1.0; // 全貌
-  const scale = start + (end - start) * eased;
-  return Math.min(3.2, Math.max(1, scale));
+function growthAutoScaleForProgress(progress: number, totalCount: number): number {
+  const t = Math.min(1, Math.max(0, progress));
+  const total = Math.max(1, totalCount);
+  const startBoost = total <= 4 ? 2.2 : total <= 12 ? 2.0 : total <= 30 ? 1.85 : 1.65;
+  const start = Math.min(2.4, startBoost);
+  const end = 1.0;
+  return start + (end - start) * t;
 }
 
 /** 以画布中心为锚点的缩放（不平移构图中心） */
@@ -232,7 +224,8 @@ export function WikiGraphView({
    * 用户滚轮/缩放按钮/重置视图后置 false，直到下次播放生长再打开。
    */
   const growthAutoZoomRef = useRef(true);
-  const lastAutoZoomCountRef = useRef(-1);
+  const transformRef = useRef({ scale: 1, tx: 0, ty: 0 });
+  const zoomAnimRafRef = useRef(0);
   const [showSettings, setShowSettings] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 1023px)').matches);
   const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0 });
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
@@ -270,11 +263,14 @@ export function WikiGraphView({
     if (!p) return;
     // 居中会改缩放，视为用户接管
     growthAutoZoomRef.current = false;
-    setTransform({
+    cancelAnimationFrame(zoomAnimRafRef.current);
+    const t = {
       scale: 1.35,
       tx: LAYOUT.w / 2 - p.x * 1.35,
       ty: LAYOUT.h / 2 - p.y * 1.35,
-    });
+    };
+    transformRef.current = t;
+    setTransform(t);
   }, []);
 
   const playGrowthAnimation = useCallback(
@@ -305,32 +301,32 @@ export function WikiGraphView({
       // 重新生长：清掉旧方位锁定，避免沿用上一轮布局
       labelSideRef.current.clear();
       // 每次播放生长重新启用自动缩放（用户中途改缩放会关掉）
+      cancelAnimationFrame(zoomAnimRafRef.current);
       growthAutoZoomRef.current = true;
-      lastAutoZoomCountRef.current = -1;
-      setTransform(transformCenteredScale(growthAutoScaleForCount(1, nodeList.length)));
+      const startScale = growthAutoScaleForProgress(0, nodeList.length);
+      const startT = transformCenteredScale(startScale);
+      transformRef.current = startT;
+      setTransform(startT);
       setGrowthPlaying(true);
       setGrowthFrame((n) => n + 1);
 
-      const endMs = growthAnimationEndMs(revealSeqRef.current);
+      const endMs = Math.max(1, growthAnimationEndMs(revealSeqRef.current));
       const tick = () => {
         const elapsed = performance.now() - growthStartRef.current;
         // 预览打开时不刷 growthFrame，避免无关重渲打断弹窗点击
         if (previewStackRef.current.length === 0) {
           setGrowthFrame((n) => n + 1);
         }
-        // 生长中自动缩放：仅在可见点数变化时更新（避免每帧 setTransform）
+        // 生长中自动缩放：严格按时间进度单调插值（无点数阶梯、无追赶振荡）
         if (growthAutoZoomRef.current && growthPlayingRef.current) {
-          const count = Math.max(1, spawnedIdsRef.current?.size ?? 1);
-          if (count !== lastAutoZoomCountRef.current) {
-            lastAutoZoomCountRef.current = count;
-            const target = growthAutoScaleForCount(count, nodeList.length);
-            setTransform((t) => {
-              if (!growthAutoZoomRef.current) return t;
-              // 向目标平滑靠拢，减少突兀跳变
-              const next = t.scale + (target - t.scale) * 0.65;
-              if (Math.abs(next - t.scale) < 0.004) return t;
-              return transformCenteredScale(next);
-            });
+          const progress = Math.min(1, elapsed / endMs);
+          const s = growthAutoScaleForProgress(progress, nodeList.length);
+          const cur = transformRef.current.scale;
+          // 时间轴本身已连续，仅过滤浮点抖动
+          if (Math.abs(s - cur) >= 0.0004) {
+            const nt = transformCenteredScale(s);
+            transformRef.current = nt;
+            setTransform(nt);
           }
         }
         if (elapsed < endMs) {
@@ -361,37 +357,12 @@ export function WikiGraphView({
           }
           growthPlayingRef.current = false;
           spawnedIdsRef.current = null;
-          // 生长结束：扩张铺满圆画布时拉远到全貌（scale=1 即整块 viewBox）
-          // 仅当用户未手动接管缩放时执行
+          // 线性时间轴结束时 scale 应为 1；直接贴齐，不再附加缓动收尾
           if (growthAutoZoomRef.current) {
             const overview = transformCenteredScale(1);
-            const fromScale = lastAutoZoomCountRef.current > 0
-              ? growthAutoScaleForCount(
-                  Math.max(1, lastAutoZoomCountRef.current),
-                  nodeList.length
-                )
-              : 1.6;
-            // 短动画拉远，贴合「最后扩张那一下」
-            const zoomOutStart = performance.now();
-            const zoomOutMs = 520;
-            const zoomFrom = Math.max(1, fromScale);
-            const zoomStep = () => {
-              if (!growthAutoZoomRef.current) return;
-              const u = Math.min(1, (performance.now() - zoomOutStart) / zoomOutMs);
-              // ease-out cubic
-              const e = 1 - Math.pow(1 - u, 3);
-              const s = zoomFrom + (1 - zoomFrom) * e;
-              setTransform(transformCenteredScale(s));
-              if (u < 1) {
-                requestAnimationFrame(zoomStep);
-              } else {
-                growthAutoZoomRef.current = false;
-                setTransform(overview);
-              }
-            };
-            requestAnimationFrame(zoomStep);
-          } else {
             growthAutoZoomRef.current = false;
+            transformRef.current = overview;
+            setTransform(overview);
           }
           // 生长结束：压低残余动能与 alpha，避免突然恢复全力度造成整图一抖
           for (const n of simRef.current) {
@@ -518,7 +489,10 @@ export function WikiGraphView({
   }, [loading, nodes, edges, playGrowthAnimation]);
 
   useEffect(() => {
-    return () => cancelAnimationFrame(growthRafRef.current);
+    return () => {
+      cancelAnimationFrame(growthRafRef.current);
+      cancelAnimationFrame(zoomAnimRafRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -972,16 +946,19 @@ export function WikiGraphView({
       if (!svg) return;
       // 用户手动缩放 → 关闭生长自动缩放
       growthAutoZoomRef.current = false;
+      cancelAnimationFrame(zoomAnimRafRef.current);
       const delta = e.deltaY > 0 ? 0.9 : 1.11;
       const g = clientToGraph(e.clientX, e.clientY, svg, transform);
       setTransform((t) => {
         const newScale = Math.min(4, Math.max(0.15, t.scale * delta));
         const v = clientToViewBox(e.clientX, e.clientY, svg);
-        return {
+        const next = {
           scale: newScale,
           tx: v.x - g.x * newScale,
           ty: v.y - g.y * newScale,
         };
+        transformRef.current = next;
+        return next;
       });
     },
     [transform]
@@ -1048,11 +1025,15 @@ export function WikiGraphView({
       }
       if (!panRef.current.active || !svgRef.current) return;
       const v = clientToViewBox(e.clientX, e.clientY, svgRef.current);
-      setTransform((t) => ({
-        ...t,
-        tx: panRef.current.tx + (v.x - panRef.current.x),
-        ty: panRef.current.ty + (v.y - panRef.current.y),
-      }));
+      setTransform((t) => {
+        const next = {
+          ...t,
+          tx: panRef.current.tx + (v.x - panRef.current.x),
+          ty: panRef.current.ty + (v.y - panRef.current.y),
+        };
+        transformRef.current = next;
+        return next;
+      });
     },
     [transform]
   );
@@ -1219,7 +1200,12 @@ export function WikiGraphView({
               className="h-8 w-8"
               onClick={() => {
                 growthAutoZoomRef.current = false;
-                setTransform((t) => ({ ...t, scale: Math.min(4, t.scale * 1.12) }));
+                cancelAnimationFrame(zoomAnimRafRef.current);
+                setTransform((t) => {
+                  const next = { ...t, scale: Math.min(4, t.scale * 1.12) };
+                  transformRef.current = next;
+                  return next;
+                });
               }}
             >
               <ZoomIn className="h-4 w-4" />
@@ -1231,7 +1217,12 @@ export function WikiGraphView({
               className="h-8 w-8"
               onClick={() => {
                 growthAutoZoomRef.current = false;
-                setTransform((t) => ({ ...t, scale: Math.max(0.15, t.scale * 0.88) }));
+                cancelAnimationFrame(zoomAnimRafRef.current);
+                setTransform((t) => {
+                  const next = { ...t, scale: Math.max(0.15, t.scale * 0.88) };
+                  transformRef.current = next;
+                  return next;
+                });
               }}
             >
               <ZoomOut className="h-4 w-4" />
@@ -1243,7 +1234,10 @@ export function WikiGraphView({
               className="h-8 w-8"
               onClick={() => {
                 growthAutoZoomRef.current = false;
-                setTransform({ scale: 1, tx: 0, ty: 0 });
+                cancelAnimationFrame(zoomAnimRafRef.current);
+                const resetT = { scale: 1, tx: 0, ty: 0 };
+                transformRef.current = resetT;
+                setTransform(resetT);
               }}
             >
               <Maximize2 className="h-4 w-4" />
