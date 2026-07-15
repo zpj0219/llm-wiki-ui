@@ -18,6 +18,10 @@ services:
       HERMES_API_KEY: ${HERMES_API_KEY}
       USE_HERMES_CHAT: ${USE_HERMES_CHAT:-auto}
       DEFAULT_CHAT_MODEL: ${DEFAULT_CHAT_MODEL:-hermes-agent}
+      # 结晶 webhook（与 hermes-data platforms.webhook.routes.crystallize.secret 一致）
+      HERMES_WEBHOOK_URL: ${HERMES_WEBHOOK_URL:-http://host.docker.internal:8644}
+      HERMES_WEBHOOK_SECRET: ${HERMES_WEBHOOK_SECRET}
+      HERMES_WEBHOOK_ROUTE: ${HERMES_WEBHOOK_ROUTE:-crystallize}
     volumes:
       - ${HERMES_KB_PATH:-../hermes-data/data/home/Documents/knowledge-base}:/data/knowledge-base:rw
       - ./data:/var/lib/llm-wiki-ui
