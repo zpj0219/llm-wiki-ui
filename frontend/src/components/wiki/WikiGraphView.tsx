@@ -278,6 +278,8 @@ export function WikiGraphView({
   /** 生长动画中已「出生」参与力学的节点 */
   const spawnedIdsRef = useRef<Set<string> | null>(null);
   const initialGrowthDoneRef = useRef(false);
+  /** 搜索框处于编辑状态时，结果集变化直接走「全量展示 + 扩散收尾」。 */
+  const searchEditingRef = useRef(false);
   /**
    * 标签相对节点的方位槽位（0–7）。运动中锁定，静止后再做避让重排。
    * 0右 1左 2上 3下 4右上 5右下 6左上 7左下
@@ -300,6 +302,107 @@ export function WikiGraphView({
     transformRef.current = t;
     setTransform(t);
   }, []);
+
+  /**
+   * 随时终止逐点生长：立即补齐所有节点，再复用生长结尾的回温扩散效果铺开。
+   * 搜索结果集变化也走这里，避免旧 reveal/spawned 状态隐藏恢复出来的节点。
+   */
+  const finishGrowthImmediately = useCallback(
+    (nodeList: WikiGraphNode[], edgeList: WikiGraphEdge[]) => {
+      cancelAnimationFrame(growthRafRef.current);
+      cancelAnimationFrame(zoomAnimRafRef.current);
+
+      if (nodeList.length === 0) {
+        growthStartRef.current = 0;
+        growthPlayingRef.current = false;
+        spawnedIdsRef.current = null;
+        growthAutoZoomRef.current = false;
+        simRef.current = [];
+        setPositions(new Map());
+        setGrowthPlaying(false);
+        setGrowthFrame((n) => n + 1);
+        return;
+      }
+
+      const size = layoutSizeForNodeCount(nodeList.length, BASE_LAYOUT.w, BASE_LAYOUT.h);
+      if (size.w !== LAYOUT.w || size.h !== LAYOUT.h) {
+        const dx = size.w / 2 - LAYOUT.w / 2;
+        const dy = size.h / 2 - LAYOUT.h / 2;
+        for (const node of simRef.current) {
+          node.x += dx;
+          node.y += dy;
+        }
+        LAYOUT.w = size.w;
+        LAYOUT.h = size.h;
+        setLayoutEpoch((n) => n + 1);
+      }
+
+      const merged = mergeSimWithNodes(
+        simRef.current,
+        nodeList,
+        LAYOUT.w,
+        LAYOUT.h,
+      );
+
+      // 正在生长时，尚未出生的节点按当前已出生结构补位，避免全部叠在中心。
+      const spawned = spawnedIdsRef.current;
+      if (spawned && spawned.size > 0) {
+        const liveIds = new Set(merged.map((node) => node.id));
+        const placed = new Set([...spawned].filter((id) => liveIds.has(id)));
+        for (const node of merged) {
+          if (placed.has(node.id)) continue;
+          placeNodeRelativeToStructure(
+            node,
+            merged,
+            edgeList,
+            placed,
+            LAYOUT.w,
+            LAYOUT.h,
+            packingMetrics(
+              Math.max(1, placed.size),
+              LAYOUT.w,
+              LAYOUT.h,
+              prefs.linkDistance,
+            ).linkDistance,
+          );
+          node.vx = 0;
+          node.vy = 0;
+          placed.add(node.id);
+        }
+      }
+
+      simRef.current = merged;
+      revealSeqRef.current = computeRevealSequence(
+        nodeList,
+        edgeList,
+        prefs.localMode ? focusId : null,
+      );
+      growthStartRef.current = 0;
+      growthPlayingRef.current = false;
+      spawnedIdsRef.current = null;
+      growthAutoZoomRef.current = false;
+      impulseRef.current = null;
+
+      // 生长结尾：压低旧速度，再给适量 alpha，让斥力把全量节点平铺开。
+      for (const node of merged) {
+        if (node.fixed) continue;
+        node.vx *= 0.25;
+        node.vy *= 0.25;
+      }
+      alphaRef.current = 0.35;
+      layoutSettledRef.current = false;
+      labelSideRef.current.clear();
+
+      const overview = transformCenteredScale(graphOverviewScale(nodeList.length));
+      transformRef.current = overview;
+      setTransform(overview);
+      setPositions(new Map(simToPositionMap(merged)));
+      setLayoutSettled(false);
+      setGrowthPlaying(false);
+      setGrowthFrame((n) => n + 1);
+    },
+    [prefs.linkDistance, prefs.localMode, focusId],
+  );
 
   const playGrowthAnimation = useCallback(
     (nodeList: WikiGraphNode[], edgeList: WikiGraphEdge[], force = false) => {
@@ -366,54 +469,12 @@ export function WikiGraphView({
         if (elapsed < endMs) {
           growthRafRef.current = requestAnimationFrame(tick);
         } else {
-          // 收尾：漏网的点按当前结构落位，再交给全图力学
-          const spawned = spawnedIdsRef.current ?? new Set<string>();
-          for (const n of simRef.current) {
-            if (spawned.has(n.id)) continue;
-            if (spawned.size === 0) {
-              n.x = LAYOUT.w / 2;
-              n.y = LAYOUT.h / 2;
-              n.vx = 0;
-              n.vy = 0;
-            } else {
-              placeNodeRelativeToStructure(
-                n,
-                simRef.current,
-                edgeList,
-                spawned,
-                LAYOUT.w,
-                LAYOUT.h,
-                packingMetrics(Math.max(1, spawned.size), LAYOUT.w, LAYOUT.h, prefs.linkDistance)
-                  .linkDistance
-              );
-            }
-            spawned.add(n.id);
-          }
-          growthPlayingRef.current = false;
-          spawnedIdsRef.current = null;
-          // 线性时间轴结束时直接贴齐全图适配值，不再附加缓动收尾
-          if (growthAutoZoomRef.current) {
-            const overview = transformCenteredScale(overviewScale);
-            growthAutoZoomRef.current = false;
-            transformRef.current = overview;
-            setTransform(overview);
-          }
-          // 生长结束：压低残余动能与 alpha，避免突然恢复全力度造成整图一抖
-          for (const n of simRef.current) {
-            if (n.fixed) continue;
-            n.vx *= 0.25;
-            n.vy *= 0.25;
-          }
-          // 生长结束后给一点扩张动能，让斥力把中心团撑开铺满画布
-          alphaRef.current = Math.max(0.22, Math.min(alphaRef.current, 0.35));
-          layoutSettledRef.current = false;
-          setLayoutSettled(false);
-          setGrowthPlaying(false);
+          finishGrowthImmediately(nodeList, edgeList);
         }
       };
       growthRafRef.current = requestAnimationFrame(tick);
     },
-    [prefs.growAnimation, prefs.localMode, prefs.linkDistance, focusId]
+    [prefs.growAnimation, prefs.localMode, focusId, finishGrowthImmediately]
   );
 
   useEffect(() => {
@@ -490,6 +551,11 @@ export function WikiGraphView({
   );
 
   useEffect(() => {
+    if (searchEditingRef.current) {
+      finishGrowthImmediately(nodes, edges);
+      return;
+    }
+
     const size = layoutSizeForNodeCount(nodes.length, BASE_LAYOUT.w, BASE_LAYOUT.h);
     if (size.w !== LAYOUT.w || size.h !== LAYOUT.h) {
       const dx = size.w / 2 - LAYOUT.w / 2;
@@ -504,16 +570,18 @@ export function WikiGraphView({
       LAYOUT.w = size.w;
       LAYOUT.h = size.h;
       setLayoutEpoch((n) => n + 1);
-      setPositions(new Map(simToPositionMap(simRef.current)));
     }
-    simRef.current = mergeSimWithNodes(simRef.current, nodes, LAYOUT.w, LAYOUT.h);
+    const merged = mergeSimWithNodes(simRef.current, nodes, LAYOUT.w, LAYOUT.h);
+    simRef.current = merged;
     revealSeqRef.current = computeRevealSequence(
       nodes,
       edges,
       prefs.localMode ? focusId : null
     );
     alphaRef.current = 1;
-  }, [nodes, edges, prefs.localMode, focusId]);
+    // 节点集变化后同一轮同步 positions，避免计数已恢复但节点因无坐标不渲染。
+    setPositions(new Map(simToPositionMap(merged)));
+  }, [nodes, edges, prefs.localMode, focusId, finishGrowthImmediately]);
 
   /** 首次加载自动播放一次 */
   useEffect(() => {
@@ -1211,7 +1279,7 @@ export function WikiGraphView({
   }
 
   const selectedNode = selectedId ? nodes.find((n) => n.id === selectedId) : null;
-  const growthActive = prefs.growAnimation && growthStartRef.current > 0;
+  const growthActive = prefs.growAnimation && growthPlaying;
   const growthElapsed = growthActive ? performance.now() - growthStartRef.current : Infinity;
   void growthFrame;
   const revealSeq = revealSeqRef.current;
@@ -1224,6 +1292,15 @@ export function WikiGraphView({
             placeholder="搜索节点…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => {
+              searchEditingRef.current = true;
+              if (growthPlayingRef.current) {
+                finishGrowthImmediately(nodes, edges);
+              }
+            }}
+            onBlur={() => {
+              searchEditingRef.current = false;
+            }}
             className="h-8 w-36 text-sm"
           />
           <div className="flex gap-0.5">
