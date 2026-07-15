@@ -42,16 +42,9 @@ cp .env.example .env
 
 ## 快速开始
 
-### Docker Compose
+### 本地开发（推荐）
 
-```bash
-docker compose up --build
-```
-
-- 前端：http://localhost:3000
-- BFF API：http://localhost:8000/docs
-
-### 本地开发
+不使用 Docker。需本机 Node.js / Python，以及已启动的 hermes-data。
 
 **1. Hermes（hermes-data）**
 
@@ -84,6 +77,17 @@ npm run dev   # http://localhost:5173
 ```
 
 默认账号：`admin` / `admin123`
+
+### 生产部署（Docker）
+
+仅生产环境使用 Docker 单镜像（nginx + BFF）。详见 [deploy.md](deploy.md)。
+
+```bash
+docker compose up -d --build
+```
+
+- Web UI：http://localhost:3000
+- API 文档：http://localhost:3000/api/docs
 
 ### Hermes 对话配置（OpenWebUI 同款）
 
