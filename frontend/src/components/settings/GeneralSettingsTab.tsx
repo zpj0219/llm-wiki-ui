@@ -12,6 +12,7 @@ import {
 } from '@/services/generalSettings';
 import { notifyAuthExpired } from '@/services/authSession';
 import { cn } from '@/lib/utils';
+import { APP_VERSION, APP_VERSION_NOTE, KARPATHY_WIKI_TAGLINE } from '@shared/constants';
 
 export function GeneralSettingsTab({ onLogout }: { onLogout?: () => void }) {
   const [settings, setSettings] = useState<GeneralSettings>(() => getGeneralSettings());
@@ -43,6 +44,22 @@ export function GeneralSettingsTab({ onLogout }: { onLogout?: () => void }) {
 
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">关于</CardTitle>
+          <CardDescription>应用版本与说明</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">LLM-Wiki</span>
+            <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+              v{APP_VERSION}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">{KARPATHY_WIKI_TAGLINE}</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">{APP_VERSION_NOTE}</p>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">外观</CardTitle>

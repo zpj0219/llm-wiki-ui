@@ -12,6 +12,7 @@ import {
   createForceSimNodes,
   growthPhysicsCalm,
   hopLatencyMs,
+  layoutCircleBounds,
   layoutSizeForNodeCount,
   mergeSimWithNodes,
   packingMetrics,
@@ -74,13 +75,40 @@ const LABEL_MIN_ZOOM = 0.55;
  * 生长阶段自动缩放：按时间进度 0→1 做匀速线性插值。
  * 无 ease / 弹簧 / 变速；不按点数阶梯改目标。
  */
-function growthAutoScaleForProgress(progress: number, totalCount: number): number {
+function growthAutoScaleForProgress(
+  progress: number,
+  totalCount: number,
+  endScale: number,
+): number {
   const t = Math.min(1, Math.max(0, progress));
   const total = Math.max(1, totalCount);
   const startBoost = total <= 4 ? 2.2 : total <= 12 ? 2.0 : total <= 30 ? 1.85 : 1.65;
   const start = Math.min(2.4, startBoost);
-  const end = 1.0;
-  return start + (end - start) * t;
+  return start + (endScale - start) * t;
+}
+
+/**
+ * 按节点总数推导最终画布，并将力学圆（含节点与标签余量）完整放进 viewBox。
+ * 点越多，画布和安全边距都会增大；scale=1 并不等于能看全。
+ */
+function graphOverviewScale(totalCount: number): number {
+  const count = Math.max(1, totalCount);
+  const layout = layoutSizeForNodeCount(count, BASE_LAYOUT.w, BASE_LAYOUT.h);
+  const { radius } = layoutCircleBounds(layout.w, layout.h);
+  // 点越多，边缘标签越密，预留更多图坐标空间；同时限制上限，避免过度缩小。
+  const margin = Math.min(64, 24 + Math.sqrt(count) * 2);
+  const fitX = (layout.w / 2 - margin) / radius;
+  const fitY = (layout.h / 2 - margin) / radius;
+  return Math.min(0.92, Math.max(0.58, Math.min(fitX, fitY)));
+}
+
+/** 大图更早完成拉远，为最后一批节点与扩散阶段留出完整视野。 */
+function graphAutoZoomFinishProgress(totalCount: number): number {
+  const count = Math.max(1, totalCount);
+  if (count <= 12) return 0.92;
+  if (count <= 30) return 0.88;
+  if (count <= 70) return 0.84;
+  return 0.8;
 }
 
 /** 以画布中心为锚点的缩放（不平移构图中心） */
@@ -303,7 +331,8 @@ export function WikiGraphView({
       // 每次播放生长重新启用自动缩放（用户中途改缩放会关掉）
       cancelAnimationFrame(zoomAnimRafRef.current);
       growthAutoZoomRef.current = true;
-      const startScale = growthAutoScaleForProgress(0, nodeList.length);
+      const overviewScale = graphOverviewScale(nodeList.length);
+      const startScale = growthAutoScaleForProgress(0, nodeList.length, overviewScale);
       const startT = transformCenteredScale(startScale);
       transformRef.current = startT;
       setTransform(startT);
@@ -311,6 +340,11 @@ export function WikiGraphView({
       setGrowthFrame((n) => n + 1);
 
       const endMs = Math.max(1, growthAnimationEndMs(revealSeqRef.current));
+      // 点越多越早完成拉远，在最后一批节点出现、全图扩散前保持完整视野。
+      const autoZoomEndMs = Math.max(
+        1,
+        endMs * graphAutoZoomFinishProgress(nodeList.length),
+      );
       const tick = () => {
         const elapsed = performance.now() - growthStartRef.current;
         // 预览打开时不刷 growthFrame，避免无关重渲打断弹窗点击
@@ -319,8 +353,8 @@ export function WikiGraphView({
         }
         // 生长中自动缩放：严格按时间进度单调插值（无点数阶梯、无追赶振荡）
         if (growthAutoZoomRef.current && growthPlayingRef.current) {
-          const progress = Math.min(1, elapsed / endMs);
-          const s = growthAutoScaleForProgress(progress, nodeList.length);
+          const progress = Math.min(1, elapsed / autoZoomEndMs);
+          const s = growthAutoScaleForProgress(progress, nodeList.length, overviewScale);
           const cur = transformRef.current.scale;
           // 时间轴本身已连续，仅过滤浮点抖动
           if (Math.abs(s - cur) >= 0.0004) {
@@ -357,9 +391,9 @@ export function WikiGraphView({
           }
           growthPlayingRef.current = false;
           spawnedIdsRef.current = null;
-          // 线性时间轴结束时 scale 应为 1；直接贴齐，不再附加缓动收尾
+          // 线性时间轴结束时直接贴齐全图适配值，不再附加缓动收尾
           if (growthAutoZoomRef.current) {
-            const overview = transformCenteredScale(1);
+            const overview = transformCenteredScale(overviewScale);
             growthAutoZoomRef.current = false;
             transformRef.current = overview;
             setTransform(overview);

@@ -92,6 +92,7 @@ function buildWikiTree(files: WikiFileEntry[]): TreeNode[] {
 function TreeItem({
   node,
   depth,
+  baseIndent,
   selectedPath,
   onSelect,
   onFileDrop,
@@ -99,6 +100,7 @@ function TreeItem({
 }: {
   node: TreeNode;
   depth: number;
+  baseIndent: number;
   selectedPath: string | null;
   onSelect: (path: string) => void;
   onFileDrop?: (files: FileList, targetDir: string) => Promise<void>;
@@ -162,7 +164,7 @@ function TreeItem({
             dragOver && 'bg-primary/10 ring-2 ring-primary/40',
             uploading && 'opacity-50 pointer-events-none',
           )}
-          style={{ paddingLeft: `${8 + depth * 14}px`, paddingRight: '8px' }}
+          style={{ paddingLeft: `${baseIndent + 8 + depth * 14}px`, paddingRight: '8px' }}
           onClick={() => !uploading && setOpen(!open)}
           onDragEnter={isDropTarget ? handleDragEnter : undefined}
           onDragLeave={isDropTarget ? handleDragLeave : undefined}
@@ -185,6 +187,7 @@ function TreeItem({
               key={child.path}
               node={child}
               depth={depth + 1}
+              baseIndent={baseIndent}
               selectedPath={selectedPath}
               onSelect={onSelect}
               onFileDrop={onFileDrop}
@@ -220,7 +223,7 @@ function TreeItem({
         isSelected && 'text-foreground font-medium',
         !isSelected && 'text-muted-foreground/70',
       )}
-      style={{ paddingLeft: `${8 + depth * 14 + 18}px`, paddingRight: '8px' }}
+      style={{ paddingLeft: `${baseIndent + 8 + depth * 14 + 18}px`, paddingRight: '8px' }}
       onClick={() => onSelect(node.path)}
     >
       {isWikiFile ? (
@@ -272,6 +275,8 @@ type WikiFileTreeProps = {
   statusMap?: Map<string, OriginalsFileStatus>;
   /** 只展示该路径下的子树 */
   rootPath?: string;
+  /** 内容层级的基础缩进；行背景始终保持全宽 */
+  baseIndent?: number;
 };
 
 function _findSubtree(roots: TreeNode[], targetPath: string): TreeNode[] {
@@ -285,7 +290,15 @@ function _findSubtree(roots: TreeNode[], targetPath: string): TreeNode[] {
   return [];
 }
 
-export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop, statusMap, rootPath }: WikiFileTreeProps) {
+export function WikiFileTree({
+  files,
+  selectedPath,
+  onSelect,
+  onFileDrop,
+  statusMap,
+  rootPath,
+  baseIndent = 0,
+}: WikiFileTreeProps) {
   const fullTree = useMemo(() => buildWikiTree(files), [files]);
   const tree = useMemo(() => {
     if (!rootPath) return fullTree;
@@ -293,7 +306,11 @@ export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop, status
   }, [fullTree, rootPath]);
 
   if (tree.length === 0) {
-    return <p className="text-xs text-muted-foreground px-2 py-4">暂无内容</p>;
+    return (
+      <p className="py-4 pr-2 text-xs text-muted-foreground" style={{ paddingLeft: `${baseIndent + 8}px` }}>
+        暂无内容
+      </p>
+    );
   }
 
   return (
@@ -303,6 +320,7 @@ export function WikiFileTree({ files, selectedPath, onSelect, onFileDrop, status
           key={node.path}
           node={node}
           depth={0}
+          baseIndent={baseIndent}
           selectedPath={selectedPath}
           onSelect={onSelect}
           onFileDrop={onFileDrop}

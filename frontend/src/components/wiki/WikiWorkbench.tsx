@@ -221,7 +221,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                     <span className="truncate">{categoryLabel(sub)}</span>
                     <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 transition-transform', subOpen && 'rotate-90')} />
                   </button>
-                  {subOpen && <div style={{ paddingLeft: '2rem' }}><WikiFileTree files={files} selectedPath={selectedPath} onSelect={(p) => { void openPage(p); setMobileTreeOpen(false); }} rootPath={sub} /></div>}
+                  {subOpen && <WikiFileTree files={files} selectedPath={selectedPath} onSelect={(p) => { void openPage(p); setMobileTreeOpen(false); }} rootPath={sub} baseIndent={32} />}
                 </div>
               );
             })}
@@ -289,14 +289,13 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                           </span>
                         </button>
                         {subOpen && (
-                          <div style={{ paddingLeft: '2rem' }} className="overflow-hidden">
-                            <WikiFileTree
-                              files={files}
-                              selectedPath={selectedPath}
-                              onSelect={(p) => void openPage(p)}
-                              rootPath={sub}
-                            />
-                          </div>
+                          <WikiFileTree
+                            files={files}
+                            selectedPath={selectedPath}
+                            onSelect={(p) => void openPage(p)}
+                            rootPath={sub}
+                            baseIndent={32}
+                          />
                         )}
                       </div>
                     );
@@ -404,7 +403,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                       </TabsContent>
                     )}
                     <TabsContent value="preview" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
-                      <ScrollArea className="h-full">
+                      <ScrollArea type="always" className="h-full">
                         <div className="p-6">
                           <WikiMarkdownPreview
                             content={draft}
@@ -415,7 +414,7 @@ export function WikiWorkbench({ refreshKey = 0, onOpenGraph }: WikiWorkbenchProp
                     </TabsContent>
                     {isWikiSelected && (
                       <TabsContent value="backlinks" className="absolute inset-0 m-0 data-[state=inactive]:hidden">
-                        <ScrollArea className="h-full">
+                        <ScrollArea type="always" className="h-full">
                           <div className="p-6">
                             {backlinks.length === 0 ? (
                               <p className="text-sm text-muted-foreground">暂无其它页面链接到本页</p>

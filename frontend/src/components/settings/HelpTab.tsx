@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getStoredPermissions } from '@/services/authSession';
 import type { UserPermissions } from '@shared/types';
+import { APP_VERSION, APP_VERSION_NOTE } from '@shared/constants';
 
 type ModuleKey = 'chat' | 'workbench' | 'rawfiles' | 'graph' | 'search' | 'settings';
 
@@ -426,10 +427,18 @@ export function HelpTab() {
               <BookOpen className="h-7 w-7" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-xl font-bold tracking-tight">LLM-Wiki 使用指南</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight">LLM-Wiki 使用指南</h2>
+                <Badge variant="secondary" className="text-[11px] h-5 px-2 tabular-nums">
+                  v{APP_VERSION}
+                </Badge>
+              </div>
               <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
                 LLM-Wiki 是一套<strong>可复利增长的互链知识库系统</strong>，帮助你将散落的技术文档、运维手册、故障记录等原件，
                 自动转化为结构化、可检索、可对话的智能知识库。AI 对话功能基于知识库内容提供精准回答，让知识真正"活"起来。
+              </p>
+              <p className="text-xs text-muted-foreground/90">
+                当前版本：v{APP_VERSION} · {APP_VERSION_NOTE}
               </p>
             </div>
           </div>
@@ -693,7 +702,12 @@ function OdooModeHelp() {
               <BookOpen className="h-7 w-7" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-xl font-bold tracking-tight">LLM-Wiki 使用指南</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight">LLM-Wiki 使用指南</h2>
+                <Badge variant="secondary" className="text-[11px] h-5 px-2 tabular-nums">
+                  v{APP_VERSION}
+                </Badge>
+              </div>
               <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
                 LLM-Wiki 是一套<strong>可复利增长的互链知识库系统</strong>，帮助你将散落的技术文档、运维手册、故障记录等原件，
                 自动转化为结构化、可检索、可对话的智能知识库。当前为 <strong>Odoo SSO 模式</strong>，账号通过 Odoo 统一管理。

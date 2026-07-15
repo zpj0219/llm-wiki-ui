@@ -10,8 +10,11 @@ const ScrollArea = React.forwardRef<
     <ScrollAreaPrimitive.Viewport className="h-full w-full max-w-full rounded-[inherit]" style={{ touchAction: 'auto', overflowX: 'hidden' }}>
       {children}
     </ScrollAreaPrimitive.Viewport>
-    <ScrollAreaPrimitive.Scrollbar orientation="vertical" className="flex touch-none select-none p-0.5">
-      <ScrollAreaPrimitive.Thumb className="relative flex-1 rounded-full bg-muted-foreground/20" />
+    <ScrollAreaPrimitive.Scrollbar
+      orientation="vertical"
+      className="flex w-2.5 touch-none select-none border-l border-l-transparent p-[1px]"
+    >
+      <ScrollAreaPrimitive.Thumb className="relative flex-1 rounded-full bg-border transition-colors hover:bg-muted-foreground/40" />
     </ScrollAreaPrimitive.Scrollbar>
   </ScrollAreaPrimitive.Root>
 ));

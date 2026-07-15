@@ -1,7 +1,7 @@
 import { BookOpen, MessageSquare, Settings, CircleUser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { UserInfo } from '@/components/layout/UserInfo';
-import { PAGES, PAGE_LABELS, KARPATHY_WIKI_TAGLINE, type PageId, hasAnyWikiAccess } from '@shared/constants';
+import { PAGES, PAGE_LABELS, KARPATHY_WIKI_TAGLINE, APP_VERSION, type PageId, hasAnyWikiAccess } from '@shared/constants';
 import type { UserPermissions } from '@shared/types';
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/services/api';
@@ -96,6 +96,11 @@ export function Sidebar({ currentPage, onPageChange, permissions, onLogout }: Si
       </nav>
 
       <UserInfo onLogout={onLogout} />
+      <div className="px-3 pb-3 -mt-1">
+        <p className="px-2 text-xs font-semibold text-muted-foreground tabular-nums" title="前端版本">
+          版本 v{APP_VERSION}
+        </p>
+      </div>
     </div>
   );
 }
