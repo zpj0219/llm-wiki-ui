@@ -80,14 +80,17 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
   const totalFiles = (stats.rawFiles || 0) + wikiTotal;
 
   return (
-    <ScrollArea className="flex-1 min-h-0">
-      <div className="w-full max-w-full overflow-x-hidden px-4 py-4 space-y-4">
+    <ScrollArea className="flex-1 min-h-0 w-full max-w-full [&>[data-radix-scroll-area-viewport]]:!h-full [&>[data-radix-scroll-area-viewport]]:!w-full [&>[data-radix-scroll-area-viewport]]:max-w-full [&>[data-radix-scroll-area-viewport]>div]:!block [&>[data-radix-scroll-area-viewport]>div]:!w-full [&>[data-radix-scroll-area-viewport]>div]:!min-w-0 [&>[data-radix-scroll-area-viewport]>div]:!max-w-full">
+      <div
+        className="w-full max-w-full overflow-x-hidden px-3 py-3 space-y-3 sm:px-4 sm:py-4 sm:space-y-4"
+        style={{ maxWidth: '100%', overflowX: 'hidden' }}
+      >
         {/* 顶部概览卡片 */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {CATEGORIES.map(({ key, label, icon: Icon, color }) => (
             <div
               key={key}
-              className="flex items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 shadow-sm"
+              className="flex min-w-0 max-w-full items-center gap-2.5 overflow-hidden rounded-lg border bg-card px-3 py-2.5 shadow-sm"
             >
               <div className={`flex size-8 shrink-0 items-center justify-center rounded-md ${color} text-white`}>
                 <Icon className="h-4 w-4" />
@@ -101,8 +104,8 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
         </div>
 
         {/* 分布条形图 */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
+        <Card className="min-w-0 max-w-full overflow-hidden shadow-sm">
+          <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
               文件分布
@@ -111,11 +114,11 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
               总计 {totalFiles} 个文件
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="min-w-0 space-y-3 px-4 pb-4 sm:px-6 sm:pb-6">
             {distribution.map(({ key, label, icon: Icon, color, value, percent }) => (
               <div key={key} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
+                  <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                     <Icon className="h-3 w-3" />
                     {label}
                   </span>
@@ -133,17 +136,17 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
         </Card>
 
         {/* Wiki 子分类明细 */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
+        <Card className="min-w-0 max-w-full overflow-hidden shadow-sm">
+          <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Tag className="h-4 w-4 text-muted-foreground" />
               Wiki 内容明细
             </CardTitle>
-            <CardDescription className="text-xs">
+            <CardDescription className="break-words text-xs">
               entities · topics · sources 及平铺页面
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0 px-4 pb-4 sm:px-6 sm:pb-6">
             <div className={isMobile ? 'space-y-2' : 'grid grid-cols-2 gap-3'}>
               {[
                 { label: '摘要', value: stats.sources ?? 0, color: 'bg-amber-500', hint: '摘要页面' },
@@ -154,7 +157,7 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
                 const wikiMax = Math.max(wikiTotal, 1);
                 const pct = Math.round((item.value / wikiMax) * 100);
                 return (
-                  <div key={item.label} className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5">
+                  <div key={item.label} className="flex min-w-0 max-w-full items-center gap-3 overflow-hidden rounded-lg border bg-muted/20 px-3 py-2.5">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-muted-foreground">{item.label}</p>
                       <p className="text-[10px] text-muted-foreground/60">{item.hint}</p>
@@ -176,19 +179,19 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
         </Card>
 
         {/* 处理管线状态 */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
+        <Card className="min-w-0 max-w-full overflow-hidden shadow-sm">
+          <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Clock className="h-4 w-4 text-muted-foreground" />
               处理管线
             </CardTitle>
-            <CardDescription className="text-xs">
+            <CardDescription className="break-words text-xs">
               originals → fulltext → entities · topics · sources
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="min-w-0 space-y-2 px-4 pb-4 sm:px-6 sm:pb-6">
             <p className="text-[10px] text-muted-foreground/70 pb-1">阶段一：原文 → 全文索引</p>
-            <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2">
+            <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-muted/30 px-3 py-2">
               <span className="text-xs text-muted-foreground">已生成全文</span>
               <span className="flex items-center gap-1.5 text-sm font-semibold tabular-nums text-emerald-600">
                 <CheckCircle2 className="h-3.5 w-3.5" />
@@ -196,7 +199,7 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
               </span>
             </div>
             <div className="rounded-lg bg-muted/30 px-3 py-2">
-              <div className="flex items-center justify-between">
+              <div className="flex min-w-0 items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground">未生成全文</span>
                 <span className={`text-sm font-semibold tabular-nums ${(stats.originalsPending ?? 0) > 0 ? 'text-amber-600' : 'text-muted-foreground'}`}>
                   {stats.originalsPending ?? 0}
@@ -230,9 +233,9 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
               </div>
             )}
             <p className="text-[10px] text-muted-foreground/70 pt-2 pb-1">阶段二：全文 → 实体 / 主题 / 摘要</p>
-            <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2">
-              <span className="text-xs text-muted-foreground">已提取实体 (entities + topics + sources)</span>
-              <span className="flex items-center gap-1.5 text-sm font-semibold tabular-nums text-emerald-600">
+            <div className="flex min-w-0 flex-col items-start gap-1.5 rounded-lg bg-muted/30 px-3 py-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+              <span className="min-w-0 break-words text-xs text-muted-foreground">已提取实体 (entities + topics + sources)</span>
+              <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold tabular-nums text-emerald-600">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 {(stats.entities ?? 0) + (stats.topics ?? 0) + (stats.sources ?? 0)}
               </span>
@@ -242,8 +245,8 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
 
         {/* 重复文件 */}
         {(stats.duplicateGroups ?? []).length > 0 && (
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
+          <Card className="min-w-0 max-w-full overflow-hidden shadow-sm">
+            <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Copy className="h-4 w-4 text-muted-foreground" />
                 重复文件
@@ -252,9 +255,9 @@ export function WikiSearchPanel({ refreshKey = 0 }: WikiSearchPanelProps) {
                 {stats.duplicateGroups!.length} 组内容相同的文件
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="min-w-0 space-y-3 px-4 pb-4 sm:px-6 sm:pb-6">
               {stats.duplicateGroups!.map((group) => (
-                <div key={group.md5} className="rounded-lg border bg-muted/20 px-3 py-2">
+                <div key={group.md5} className="min-w-0 max-w-full overflow-hidden rounded-lg border bg-muted/20 px-3 py-2">
                   <p className="text-[10px] text-muted-foreground/60 font-mono mb-1 truncate">
                     MD5: {group.md5}
                   </p>
