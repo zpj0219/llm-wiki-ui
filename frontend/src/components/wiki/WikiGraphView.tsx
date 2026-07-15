@@ -685,7 +685,8 @@ export function WikiGraphView({
       // 生长：到期的点按当前结构落位后加入力学
       if (growthPlayingRef.current) spawnDueNodes();
 
-      const dragging = dragRef.current != null;
+      // 仅真正拖动（moved）才进入拖拽力学；轻点不抬 alpha / 不传导
+      const dragging = Boolean(dragRef.current?.moved);
       let alpha = alphaRef.current;
       if (dragging) alpha = Math.max(alpha, 0.25);
 
@@ -1007,14 +1008,31 @@ export function WikiGraphView({
     (e: React.PointerEvent) => {
       if (dragRef.current && svgRef.current) {
         const drag = dragRef.current;
+        const node = simRef.current.find((n) => n.id === drag.id);
         if (!drag.moved) {
           const dx = e.clientX - drag.x;
           const dy = e.clientY - drag.y;
-          if (dx * dx + dy * dy > 16) drag.moved = true; // >4px 视为拖动
+          // >4px 视为拖动：此时才钉点、回温、开 impulse / 高亮
+          if (dx * dx + dy * dy > 16) {
+            drag.moved = true;
+            const now = performance.now();
+            impulseRef.current = { id: drag.id, startMs: now };
+            setDraggingId(drag.id);
+            setHoverId(drag.id);
+            alphaRef.current = Math.max(alphaRef.current, 0.28);
+            if (node) {
+              node.vx = 0;
+              node.vy = 0;
+              node.fixed = true;
+            }
+            if (layoutSettledRef.current) {
+              layoutSettledRef.current = false;
+              setLayoutSettled(false);
+            }
+          }
         }
         const g = clientToGraph(e.clientX, e.clientY, svgRef.current, transform);
-        const node = simRef.current.find((n) => n.id === drag.id);
-        // 未超过阈值时不移动点，保留双击手感
+        // 未超过阈值时不移动点，保留双击手感，也不扰动布局
         if (node && drag.moved) {
           // 硬跟随鼠标：fixed 节点在 tick 中不再夹回边界，避免发黏
           node.x = g.x;
@@ -1024,10 +1042,6 @@ export function WikiGraphView({
           node.fixed = true;
           // 必须回温，否则 alpha 冷却后其它点完全不动
           alphaRef.current = Math.max(alphaRef.current, 0.28);
-          if (layoutSettledRef.current) {
-            layoutSettledRef.current = false;
-            setLayoutSettled(false);
-          }
           setPositions(new Map(simToPositionMap(simRef.current)));
         }
         return;
@@ -1099,19 +1113,24 @@ export function WikiGraphView({
     const wasDragMove = Boolean(drag?.moved);
     if (draggedId) {
       const node = simRef.current.find((n) => n.id === draggedId);
-      if (node) {
-        // 松手后保持钉住：否则中心力/连线会把点弹回原位
-        node.fixed = true;
-        node.vx = 0;
-        node.vy = 0;
-      }
-      // 仅真正拖动后才强回温；轻点/双击不扰动布局
       if (wasDragMove) {
+        if (node) {
+          // 松手后保持钉住：否则中心力/连线会把点弹回原位
+          node.fixed = true;
+          node.vx = 0;
+          node.vy = 0;
+        }
+        // 真正拖动后强回温；impulse 保留一段时间做远跳传导
         alphaRef.current = Math.max(alphaRef.current, 0.35);
-      }
-
-      // 双击打开预览（未拖动）
-      if (!wasDragMove) {
+        lastNodeTapRef.current = null;
+      } else {
+        // 纯点击：不钉点、不回温、立刻清掉可能残留的 impulse
+        impulseRef.current = null;
+        if (node) {
+          // 轻点不应永久 fixed（按下阶段也不再钉死）
+          node.vx = 0;
+          node.vy = 0;
+        }
         const now = performance.now();
         const last = lastNodeTapRef.current;
         if (last && last.id === draggedId && now - last.t < 380) {
@@ -1120,8 +1139,6 @@ export function WikiGraphView({
         } else {
           lastNodeTapRef.current = { id: draggedId, t: now };
         }
-      } else {
-        lastNodeTapRef.current = null;
       }
     }
     dragRef.current = null;
@@ -1140,20 +1157,9 @@ export function WikiGraphView({
     e.stopPropagation();
     e.preventDefault();
     const svg = svgRef.current ?? (e.currentTarget.closest('svg') as SVGSVGElement | null);
-    const now = performance.now();
+    // 仅记录潜在拖拽；力学 / impulse / dim 等超过移动阈值后再开
     dragRef.current = { id: nodeId, x: e.clientX, y: e.clientY, moved: false };
-    impulseRef.current = { id: nodeId, startMs: now };
-    setDraggingId(nodeId);
-    setHoverId(nodeId);
     setSelectedId(nodeId);
-    // 立刻钉在当前图坐标，避免按下后第一帧被力学拉走
-    const node = simRef.current.find((n) => n.id === nodeId);
-    if (node) {
-      node.vx = 0;
-      node.vy = 0;
-      node.fixed = true;
-    }
-    alphaRef.current = Math.max(alphaRef.current, 0.3);
     // 捕获挂在 svg 上，保证拖出节点外仍收到 move/up
     svg?.setPointerCapture(e.pointerId);
   }, []);
