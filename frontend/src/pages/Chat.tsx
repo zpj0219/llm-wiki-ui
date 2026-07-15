@@ -959,11 +959,16 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                     message.content &&
                     message.content !== STREAMING_PLACEHOLDER &&
                     !isStreamingReply ? (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-                        <span className="min-w-0 flex-1 opacity-70 leading-snug">
-                          本回复由大模型总结，仅供参考
-                        </span>
-                        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                      <div className="mt-1.5 flex flex-col gap-1 text-[10px] text-muted-foreground">
+                        <div className="flex items-start gap-2">
+                          <span className="min-w-0 flex-1 opacity-70 leading-snug">
+                            本回复由大模型生成，内容仅供参考，涉及风险操作请务必核对
+                          </span>
+                          <span className="shrink-0 opacity-60 tabular-nums">
+                            {formatTime(message.timestamp)}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                           <Button
                             type="button"
                             size="sm"
@@ -991,27 +996,14 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                                 ? '已结晶'
                                 : '结晶'}
                           </Button>
-                          {crystallizeHints[message.id] && (
+                          {crystallizeHints[message.id]?.includes('失败') && (
                             <span
-                              className={cn(
-                                'max-w-[9rem] truncate',
-                                crystallizeHints[message.id].includes('失败')
-                                  ? 'text-destructive'
-                                  : 'opacity-70'
-                              )}
+                              className="max-w-[9rem] truncate text-destructive"
                               title={crystallizeHints[message.id]}
                             >
-                              {crystallizeHints[message.id].includes('失败')
-                                ? '失败'
-                                : crystallizeHints[message.id].includes('结晶') ||
-                                    crystallizeHints[message.id].includes('提交')
-                                  ? '已结晶'
-                                  : crystallizeHints[message.id]}
+                              失败
                             </span>
                           )}
-                          <span className="opacity-60 tabular-nums">
-                            {formatTime(message.timestamp)}
-                          </span>
                         </div>
                       </div>
                     ) : (
