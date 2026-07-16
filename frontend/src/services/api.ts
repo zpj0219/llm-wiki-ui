@@ -5,14 +5,8 @@ import {
   broadcastAuthStateChange,
   AuthExpiredError,
 } from './authSession';
-import { getApiBase } from '../shared/utils/apiConfig';
 
-let base = '';
-
-/** Initialize the API_BASE once from apiConfig. Call on app start. */
-export function initApiBase(): void {
-  base = getApiBase().replace(/\/$/, '');
-}
+const base = (import.meta.env.VITE_API_BASE ?? '').trim().replace(/\/$/, '');
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const fullUrl = url.startsWith('http') ? url : `${base}${url}`;

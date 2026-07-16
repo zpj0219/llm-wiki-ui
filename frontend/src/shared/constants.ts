@@ -18,21 +18,6 @@ export const PAGE_LABELS: Record<PageId, string> = {
   [PAGES.SETTINGS]: '设置',
 };
 
-export type ApiEnvironment = 'LOCAL' | 'REMOTE';
-
-export const API_ENVIRONMENTS = {
-  LOCAL: {
-    label: '本机',
-    apiBase: '/api',
-  },
-  REMOTE: {
-    label: '局域网',
-    apiBase: 'http://192.168.1.100:8000/api',
-  },
-} as const;
-
-export const DEFAULT_API_ENVIRONMENT: ApiEnvironment = 'LOCAL';
-
 export type LLMWikiTab = 'workbench' | 'rawfiles' | 'graph' | 'search';
 
 export const LLM_WIKI_TABS: { id: LLMWikiTab; label: string; permissionKey?: keyof UserPermissions }[] = [

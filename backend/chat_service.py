@@ -46,8 +46,8 @@ def _require_hermes() -> None:
         )
 
 
-def _session_key(user_id: str) -> str:
-    return f"agent:main:webui:user:{user_id}"
+def _session_key(user_id: str, session_id: str) -> str:
+    return f"agent:main:webui:user:{user_id}:session:{session_id}"
 
 
 def _serialize(session: dict[str, Any]) -> dict[str, Any]:
@@ -154,7 +154,11 @@ def send_message(user_id: str, session_id: str, content: str) -> dict[str, Any] 
     reply_started_at = time.monotonic()
 
     try:
-        reply = chat_completions(api_messages, model, session_key=_session_key(user_id))
+        reply = chat_completions(
+            api_messages,
+            model,
+            session_key=_session_key(user_id, session_id),
+        )
     except HermesError as e:
         raise ValueError(str(e)) from e
 
@@ -248,7 +252,9 @@ def stream_message(
         try:
             try:
                 for chunk in chat_completions_stream(
-                    api_messages, model, session_key=_session_key(user_id)
+                    api_messages,
+                    model,
+                    session_key=_session_key(user_id, session_id),
                 ):
                     if is_cancelled and is_cancelled():
                         break
@@ -262,7 +268,14 @@ def stream_message(
                         if isinstance(step, dict):
                             yield {"type": "step", "step": step}
             except HermesError as e:
+                updated, assistant_msg = _save_once(stopped=True)
                 yield {"type": "error", "message": str(e)}
+                if updated and assistant_msg:
+                    yield {
+                        "type": "stopped",
+                        "session": _serialize(updated),
+                        "assistantMessage": assistant_msg,
+                    }
                 return
 
             stopped = bool(is_cancelled and is_cancelled())
@@ -388,7 +401,9 @@ async def stream_message_async(
 
         try:
             async for chunk in chat_completions_stream_async(
-                api_messages, model, session_key=_session_key(user_id)
+                api_messages,
+                model,
+                session_key=_session_key(user_id, session_id),
             ):
                 if is_cancelled and is_cancelled():
                     break
@@ -415,7 +430,14 @@ async def stream_message_async(
                     if isinstance(step, dict):
                         yield {"type": "step", "step": step}
         except HermesError as e:
+            updated, assistant_msg = _finalize(stopped=True)
             yield {"type": "error", "message": str(e)}
+            if updated and assistant_msg:
+                yield {
+                    "type": "stopped",
+                    "session": _serialize(updated),
+                    "assistantMessage": assistant_msg,
+                }
             return
         else:
             # 正常完成

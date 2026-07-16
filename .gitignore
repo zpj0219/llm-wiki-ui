@@ -9,6 +9,7 @@ __pycache__/
 .venv/
 venv/
 backend/data/
+/data/
 .env
 
 # IDE
@@ -23,3 +24,4 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+*.tar

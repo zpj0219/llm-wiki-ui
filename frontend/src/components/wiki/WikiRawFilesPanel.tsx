@@ -1124,6 +1124,7 @@ export function WikiRawFilesPanel({ refreshKey = 0 }: WikiRawFilesPanelProps) {
       <FilePreviewDialog
         open={previewPath !== null}
         relPath={previewPath}
+        resolveInitialWikiPath={false}
         onOpenChange={(open) => { if (!open) setPreviewPath(null); }}
       />
 

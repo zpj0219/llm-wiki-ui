@@ -25,6 +25,8 @@ type FilePreviewDialogProps = {
   showBackdrop?: boolean;
   /** 打开即用的路径种子（如图节点），避免等 listWikiEntries 才能点链接 */
   knownPaths?: string[];
+  /** 初始路径是否需要按 Wiki 标题解析；文件管理传入真实路径时应关闭 */
+  resolveInitialWikiPath?: boolean;
 };
 
 /** 可通过文本方式预览的文件扩展名 */
@@ -88,6 +90,7 @@ export function FilePreviewDialog({
   zIndex = 50,
   showBackdrop = true,
   knownPaths,
+  resolveInitialWikiPath = true,
 }: FilePreviewDialogProps) {
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -120,7 +123,11 @@ export function FilePreviewDialog({
     // 若已有全局缓存，直接合并
     knownMdRef.current = mergePaths(seed, wikiMdPathsCache ?? []);
 
-    const initial = relPath ? resolveWikiRelPath(relPath, knownMdRef.current) : null;
+    const initial = relPath
+      ? resolveInitialWikiPath
+        ? resolveWikiRelPath(relPath, knownMdRef.current)
+        : normalizeWikiRel(relPath)
+      : null;
     setActivePath(initial);
 
     // 同一次 open 只拉一次；缓存命中时几乎不发网络
@@ -132,7 +139,9 @@ export function FilePreviewDialog({
       if (cancelled) return;
       knownMdRef.current = mergePaths(seed, fromApi);
       if (relPath) {
-        const resolved = resolveWikiRelPath(relPath, knownMdRef.current);
+        const resolved = resolveInitialWikiPath
+          ? resolveWikiRelPath(relPath, knownMdRef.current)
+          : normalizeWikiRel(relPath);
         setActivePath((cur) => {
           if (cur == null || cur === relPath || cur === initial) return resolved;
           return cur;
@@ -144,7 +153,7 @@ export function FilePreviewDialog({
       cancelled = true;
     };
     // 注意：不要依赖 knownPaths 数组引用
-  }, [open, relPath]);
+  }, [open, relPath, resolveInitialWikiPath]);
 
   useEffect(() => {
     if (!open || !activePath) return;

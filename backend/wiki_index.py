@@ -104,6 +104,25 @@ def _is_wiki_md(rel_path: str) -> bool:
     return p.startswith("wiki/") and p.endswith(".md")
 
 
+def _wiki_path_rank(rel_path: str) -> tuple[int, str, str]:
+    path = rel_path.replace("\\", "/")
+    if path.startswith("wiki/entities/"):
+        category = 0
+    elif path.startswith("wiki/topics/"):
+        category = 1
+    elif path.startswith("wiki/sources/"):
+        category = 2
+    else:
+        category = 3
+    return category, path.casefold(), path
+
+
+def _add_title_alias(by_title: dict[str, str], alias: str, rel_path: str) -> None:
+    current = by_title.get(alias)
+    if current is None or _wiki_path_rank(rel_path) < _wiki_path_rank(current):
+        by_title[alias] = rel_path
+
+
 def _resolve_link(
     target: str, by_title: dict[str, str], all_paths: list[str]
 ) -> str | None:
@@ -148,16 +167,16 @@ def build_index(force: bool = False) -> dict[str, Any]:
 
     for rel in md_paths:
         title = _title_from_path(rel)
-        by_title[title] = rel
-        by_title[title.lower()] = rel
-        by_title[rel.lower()] = rel
+        _add_title_alias(by_title, title, rel)
+        _add_title_alias(by_title, title.lower(), rel)
+        _add_title_alias(by_title, rel.lower(), rel)
 
     for rel in md_paths:
         content = pages_data.get(rel, "")
         fm_title = _parse_frontmatter_title(content)
         if fm_title:
-            by_title[fm_title] = rel
-            by_title[fm_title.lower()] = rel
+            _add_title_alias(by_title, fm_title, rel)
+            _add_title_alias(by_title, fm_title.lower(), rel)
 
     pages: list[dict[str, Any]] = []
     backlinks: dict[str, list[str]] = {}

@@ -378,10 +378,29 @@ def _manifest_has_md5(md5: str) -> str | None:
     """检查 md5 是否已在清单中。返回已有文件的 relPath，或 None。"""
     db = _manifest_db()
     _manifest_migrate_from_json()
-    row = db.execute(
-        "SELECT rel_path FROM uploads WHERE md5 = ? LIMIT 1", (md5,)
-    ).fetchone()
-    return row[0] if row else None
+    rows = db.execute(
+        "SELECT rel_path FROM uploads WHERE md5 = ? ORDER BY uploaded_at, rel_path",
+        (md5,),
+    ).fetchall()
+    stale_paths: list[str] = []
+    existing_path: str | None = None
+    for row in rows:
+        rel_path = str(row[0])
+        try:
+            if resolve_rel(rel_path).is_file():
+                if existing_path is None:
+                    existing_path = rel_path
+                continue
+        except ValueError:
+            pass
+        stale_paths.append(rel_path)
+    if stale_paths:
+        db.executemany(
+            "DELETE FROM uploads WHERE rel_path = ?",
+            ((path,) for path in stale_paths),
+        )
+        db.commit()
+    return existing_path
 
 
 def _manifest_get_md5(rel_path: str) -> str:
@@ -414,7 +433,7 @@ def _manifest_all_originals() -> dict[str, str]:
 
 
 def _migrate_manifest() -> int:
-    """扫描 raw/originals/ 下已有文件，补录到 manifest 中。返回新增数量。"""
+    """同步 raw/originals/ 文件与 manifest，返回新增记录数量。"""
     db = _manifest_db()
     _manifest_migrate_from_json()
     existing = set(
@@ -422,11 +441,21 @@ def _migrate_manifest() -> int:
             "SELECT rel_path FROM uploads WHERE rel_path LIKE 'raw/originals/%'"
         ).fetchall()
     )
+    actual = {
+        path
+        for path in _iter_files()
+        if path.startswith("raw/originals/") and not path.endswith("/")
+    }
+    stale = existing - actual
+    if stale:
+        db.executemany(
+            "DELETE FROM uploads WHERE rel_path = ?",
+            ((path,) for path in stale),
+        )
+        existing -= stale
     added = 0
     base = resolve_rel(".")
-    for p in _iter_files():
-        if not p.startswith("raw/originals/") or p.endswith("/"):
-            continue
+    for p in sorted(actual):
         if p in existing:
             continue
         try:
@@ -440,7 +469,7 @@ def _migrate_manifest() -> int:
             added += 1
         except (OSError, IOError):
             pass
-    if added > 0:
+    if added > 0 or stale:
         db.commit()
     return added
 
@@ -481,7 +510,7 @@ def save_original(
         rel = f"raw/inbox/{safe_name}"
     else:
         dir_rel = (target_dir or f"{ORIGINALS_PREFIX}/maintenance/manuals").replace("\\", "/").strip("/")
-        if not dir_rel.startswith(ORIGINALS_PREFIX):
+        if dir_rel != ORIGINALS_PREFIX and not dir_rel.startswith(f"{ORIGINALS_PREFIX}/"):
             raise ValueError(f"目标目录必须在 {ORIGINALS_PREFIX}/ 下")
         resolve_rel(dir_rel)
         dest_dir = resolve_rel(dir_rel)
@@ -556,7 +585,7 @@ def get_all_originals_status() -> dict[str, dict[str, Any]]:
         rel_norm = rel.replace("\\", "/")
         if rel_norm.startswith("raw/originals/maintenance/"):
             parts = rel_norm.split("/")
-            if len(parts) >= 6:
+            if len(parts) >= 5:
                 cat = parts[3]  # maintenance 下的子类
                 stem = Path(fpath.stem).name
                 fulltext_rel = f"raw/fulltext/maintenance/{cat}/{stem}.md"
