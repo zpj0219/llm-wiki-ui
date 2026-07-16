@@ -21,28 +21,11 @@ function formatDurationMs(ms: number): string {
   return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
 }
 
-/** 仅用于"模型处理计时"文案：显示秒数，不足1秒也显示 */
-function formatElapsedSec(ms: number): string {
-  if (ms < 1000) return `${(ms / 1000).toFixed(1)}秒`;
-  if (ms < 60000) return `${Math.round(ms / 1000)}秒`;
-  const min = Math.floor(ms / 60000);
-  const sec = Math.round((ms % 60000) / 1000);
-  return sec > 0 ? `${min}分${sec}秒` : `${min}分`;
-}
-
 function stepElapsedMs(step: ChatStep, now: number): number | null {
   if (step.durationMs != null) return step.durationMs;
   if (step.startedAt == null) return null;
   const end = step.completedAt ?? now;
   return Math.max(0, end - step.startedAt);
-}
-
-// 模型处理开始时间：取所有步骤中最小的 startedAt，没有时用 now
-function modelStartMs(steps: ChatStep[], now: number): number {
-  const times = steps
-    .map((s) => s.startedAt)
-    .filter((t): t is number => t != null);
-  return times.length > 0 ? Math.min(...times) : now;
 }
 
 export function ChatThinkingSteps({ steps, hasContent = false, isStreaming = false, className }: ChatThinkingStepsProps) {
@@ -72,10 +55,6 @@ export function ChatThinkingSteps({ steps, hasContent = false, isStreaming = fal
     return elapsed != null ? sum + elapsed : sum;
   }, 0);
 
-  // 模型处理计时：从第一步开始到当前时间（loading 中持续增长；完成后停留在最终耗时）
-  const modelStart = modelStartMs(steps, now);
-  const modelElapsed = Math.max(0, now - modelStart);
-
   return (
     <div className={cn('mb-2 rounded-lg border border-border/60 bg-background/40', className)}>
       <button
@@ -90,22 +69,14 @@ export function ChatThinkingSteps({ steps, hasContent = false, isStreaming = fal
         )}
         <span className="font-medium">
           {showTimer ? '模型处理中' : '处理过程'}
-          {showTimer && modelElapsed > 0 && (
-            <span className="ml-1 opacity-70">({formatElapsedSec(modelElapsed)})</span>
-          )}
         </span>
-        {totalMs > 0 && (
+        {!showTimer && totalMs > 0 && (
           <span className="ml-auto tabular-nums text-[10px] opacity-60 shrink-0">
             {formatDurationMs(totalMs)}
           </span>
         )}
         {showTimer && (
-          <Loader2
-            className={cn(
-              'h-3 w-3 animate-spin shrink-0 opacity-70',
-              totalMs > 0 ? '' : 'ml-auto'
-            )}
-          />
+          <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin opacity-70" />
         )}
       </button>
       {expanded && (

@@ -80,6 +80,44 @@ function formatReplyDuration(ms: number): string {
   return parts.join(' ');
 }
 
+function ReplyDurationBadge({
+  message,
+  isStreaming,
+}: {
+  message: ChatMessage;
+  isStreaming: boolean;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    setNow(Date.now());
+    const timerId = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(timerId);
+  }, [isStreaming]);
+
+  const stepStarts = (message.steps ?? [])
+    .map((step) => step.startedAt)
+    .filter((time): time is number => time != null);
+  const timestampStartedAt = Date.parse(message.timestamp);
+  const startedAt = stepStarts.length > 0
+    ? Math.min(...stepStarts)
+    : Number.isFinite(timestampStartedAt)
+      ? timestampStartedAt
+      : now;
+  const durationMs = isStreaming
+    ? Math.max(0, now - startedAt)
+    : message.replyDurationMs;
+
+  if (durationMs == null) return null;
+  return (
+    <span className="inline-flex min-h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 leading-none text-primary/80 tabular-nums">
+      <Clock3 className="h-3 w-3 shrink-0" />
+      {formatReplyDuration(durationMs)}
+    </span>
+  );
+}
+
 function upsertChatStep(steps: ChatStep[], step: ChatStep): ChatStep[] {
   const now = Date.now();
   const idx = steps.findIndex((s) => s.id === step.id);
@@ -939,7 +977,6 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             ) : (
               messages.map((message, index) => {
                 const isStreamingReply = isStreamingMessage(message, index, messages);
-                const replyDurationMs = message.replyDurationMs;
 
                 return (
                 <div
@@ -989,23 +1026,19 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                       </>
                     )}
                     {message.role === 'assistant' &&
-                    message.content &&
-                    message.content !== STREAMING_PLACEHOLDER &&
-                    !isStreamingReply ? (
+                    (isStreamingReply || (
+                      message.content && message.content !== STREAMING_PLACEHOLDER
+                    )) ? (
                       <div className="mt-3 flex flex-col gap-1.5 border-t border-border/60 pt-2 text-[10px] text-muted-foreground">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="inline-flex min-h-5 min-w-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 leading-none text-primary/80">
                             <CircleAlert className="h-3 w-3 shrink-0" />
                             该内容由大模型生成，仅供参考，风险操作请务必核对
                           </span>
-                          {replyDurationMs != null && (
-                            <span className="inline-flex min-h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 leading-none text-primary/80 tabular-nums">
-                              <Clock3 className="h-3 w-3 shrink-0" />
-                              {formatReplyDuration(replyDurationMs)}
-                            </span>
-                          )}
+                          <ReplyDurationBadge message={message} isStreaming={isStreamingReply} />
                         </div>
-                        <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1">
+                        {!isStreamingReply && (
+                          <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1">
                           <Button
                             type="button"
                             size="sm"
@@ -1044,7 +1077,8 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                           <span className="ml-auto shrink-0 whitespace-nowrap text-[10px] leading-none opacity-60 tabular-nums">
                             {formatDateTime(message.timestamp)}
                           </span>
-                        </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <p
