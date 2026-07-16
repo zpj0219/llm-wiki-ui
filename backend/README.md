@@ -1,149 +1,227 @@
-# llm-wiki-ui 后端
+# LLM-Wiki UI 后端
 
-FastAPI BFF（Backend For Frontend），为 React 前端提供知识库管理、Hermes 对话代理、文件上传等功能。
+版本：**1.0.0**
 
-## 模块一览
+后端是 FastAPI BFF（Backend For Frontend），负责用户认证、权限、知识库文件访问、上传、Wiki 索引、Hermes 对话代理、SSE 流式消息和对话结晶代理。
 
-```
+浏览器只访问 `/api/*`，不会直接持有 Hermes Gateway Token 或结晶 Webhook Secret。
+
+## 目录结构
+
+```text
 backend/
-├── main.py               # FastAPI 入口，CORS，路由注册
-├── config.py             # 环境变量 / 配置常量
-├── database.py           # SQLite 初始化（users, auth_tokens, chat_sessions, chat_messages, user_permissions）
-├── auth_store.py         # 用户登录 / token 校验 / 权限管理
-├── odoo_auth.py          # Odoo JWT SSO 桥接：验证 JWT、查找或创建用户
-├── chat_service.py       # 对话业务逻辑：会话 CRUD、消息收发、SSE 流式
-├── chat_store.py         # 对话持久层：SQLite 读写 chat sessions/messages
-├── hermes_client.py      # Hermes Gateway HTTP 客户端（/v1/chat/completions）
-├── knowledge_store.py    # 知识库文件系统读写 + 统计 + 重复检测
-├── wiki_index.py         # Wiki 页面反向链接索引
+├── main.py                 # FastAPI 入口、初始化和健康检查
+├── config.py               # 环境变量
+├── database.py             # SQLite 表结构、迁移和种子账号
+├── auth_store.py           # 登录、Token、用户和权限
+├── odoo_auth.py            # 可选 Odoo JWT SSO
+├── chat_store.py           # 对话会话和消息持久化
+├── chat_service.py         # 会话业务、Hermes 调用和 SSE 收尾
+├── crystallize_store.py    # 结晶提交记录与重复检查
+├── hermes_client.py        # Gateway、模型、SSE 和 Webhook 客户端
+├── knowledge_store.py      # 知识库文件、上传清单、统计和状态
+├── wiki_index.py           # Wikilink、反向链接、搜索和关系图索引
 ├── routers/
-│   ├── auth.py           # /api/auth/* 登录/登出/token 刷新/用户管理/Odoo SSO 回调
-│   ├── chat.py           # /api/chat/* 对话 API + SSE 流式
-│   ├── upload.py         # /api/upload/* 原件上传
-│   └── wiki.py           # /api/wiki/* 知识库浏览/编辑/搜索/图谱/下载
-└── data/
-    └── app.db            # SQLite 数据库文件
+│   ├── auth.py
+│   ├── chat.py
+│   ├── upload.py
+│   └── wiki.py
+└── requirements.txt
 ```
 
-## 核心实现
+`backend/data/` 是本地开发运行时目录，已被 Git 忽略。
 
-### main.py
+## 启动流程
 
-- 启动时初始化知识库目录、SQLite 数据库、上传清单迁移
-- 注册 CORS 中间件（允许所有来源）
-- 挂载 4 个子路由：auth / chat / upload / wiki
-- `/api/health` 健康检查，返回知识库路径和 Hermes 连接状态
+导入 `main.py` 时依次执行：
 
-### config.py
+1. 创建知识库标准目录。
+2. 初始化或迁移 SQLite 表结构。
+3. 首次运行写入默认账号和权限。
+4. 扫描 `raw/originals/`，同步上传 MD5 清单并移除失效记录。
+5. 注册认证、对话、知识库和上传路由。
 
-- `KNOWLEDGE_BASE_ROOT`：知识库文件系统路径，默认指向 `hermes-data/data/home/Documents/knowledge-base`
-- `DATABASE_PATH`：SQLite 路径，默认 `backend/data/app.db`
-- `HERMES_GATEWAY_URL`：Hermes 网关地址，默认 `http://localhost:8642`
-- `HERMES_API_KEY`：与 hermes-data 中 `API_SERVER_KEY` 一致
-- `DEFAULT_CHAT_MODEL`：默认模型 ID，默认 `hermes-agent`
-- `USE_HERMES_CHAT`：auto/true/false 控制是否启用对话功能
-- `ODOO_SSO_JWT_SECRET`：与 Odoo 自定义模块共享的 HS256 密钥，非空即启用 Odoo SSO
-- `USER_MANAGEMENT_MODE`：`local`（管理员手动管理用户）或 `odoo`（Odoo SSO 统一管理，用户管理只读）
+## 本地运行
 
-### database.py
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-数据库表结构：
-- `users`：用户名、密码哈希（PBKDF2 SHA256）、邮箱、是否激活、是否超级管理员、`account_source`（`local`/`odoo`）、`external_id`（Odoo 用户关联）
-- `auth_tokens`：token + user_id + 过期时间 + token_version（密码修改后旧 token 失效）
-- `chat_sessions`：会话 id、user_id、名称、模型、创建/更新时间
-- `chat_messages`：消息 id、session_id、role、content、timestamp、reply_duration_ms、sort_order
-- `user_permissions`：7 项布尔权限字段
+export KNOWLEDGE_BASE_ROOT=../../hermes-data/data/home/Documents/knowledge-base
+export HERMES_GATEWAY_URL=http://localhost:8642
+export HERMES_API_KEY=与-hermes-data-API_SERVER_KEY-一致
+export HERMES_WEBHOOK_URL=http://localhost:8644
+export HERMES_WEBHOOK_SECRET=与-Hermes-crystallize-路由一致
 
-种子数据：`admin/admin123`（管理员）、`user/user123`（普通用户）。
-
-### auth_store.py
-
-- 登录：验证密码 → 校验 `account_source`（管理员通用，普通用户只能同模式登录）→ 生成 access_token（1h）+ refresh_token，存入 auth_tokens 表
-- 登出：清除当前 token，广播 `token_version` 使该用户所有旧 token 失效
-- 刷新：refresh_token → 新 access_token，旧 token 删除
-- 权限：每个用户对应 `user_permissions` 行，超级管理员绕过所有权限检查
-- 修改密码后自增 `token_version`，强制所有旧 token 失效
-- 用户列表：按当前 `USER_MANAGEMENT_MODE` + 管理员过滤，只展示同模式用户及所有管理员
-
-### odoo_auth.py
-
-Odoo JWT SSO 桥接模块：
-- `verify_odoo_jwt(token)` — 使用 HS256 验证 Odoo 签发的短期 JWT，校验 `sub` 和 `exp` 字段
-- `find_or_create_odoo_user(sub, login, email, name)` — 按 `external_id = odoo:{sub}` 查找或创建用户，新建用户 `account_source = 'odoo'`，密码随机不可用（禁止本地登录），用户名格式 `odoo_{sub}`
-- `odoo_sso_enabled()` — 检查 `ODOO_SSO_JWT_SECRET` 是否已配置
-
-### 用户管理模式
-
-`USER_MANAGEMENT_MODE` 控制两种运行模式：
-
-| 模式 | 用户来源 | 登录方式 | 用户管理 |
-|------|---------|---------|---------|
-| `local` | 管理员后台创建 | 用户名 + 密码 | 完整 CRUD + 权限配置 |
-| `odoo` | Odoo SSO 自动创建 | Odoo 跳转（JWT） | 管理员只读查看，不可操作 |
-
-`GET /api/auth/config` 返回当前模式，前端据此调整 UI（隐藏/显示用户管理入口、切换帮助内容等）。
-`GET /api/auth/odoo/callback?token=...` 仅在 odoo 模式下可用，验证 JWT → upsert 用户 → 签发 token。
-
-### hermes_client.py
-
-与 Hermes Gateway 通信的唯一通道：
-- `chat_completions()` — 非流式对话（stream=false）
-- `chat_completions_stream()` — SSE 流式对话（同步版）
-- `chat_completions_stream_async()` — SSE 流式对话（异步版，FastAPI 使用）
-- `list_models()` — 获取可用模型列表
-- `health_check()` — 网关健康探测
-
-通信协议：OpenAI 兼容的 `/v1/chat/completions`，Authorization Bearer token。
-
-### chat_service.py
-
-**会话管理**：
-- 每个用户独立存储会话，支持 CRUD + 清空 + 模型切换
-- 会话名称自动从首条用户消息截取（前 24 字符）
-
-**流式对话架构**：
-
-使用异步版 `stream_message_async()`，`async for` 迭代 Hermes SSE 流，每次迭代 `await` 归还控制权给事件循环，避免阻塞其他请求。
-
-**流式中间写入与占位符约定**：
-
-```
-发送消息 → 立即写入 DB：用户消息 + 占位符 assistant（__STREAMING_PLACEHOLDER__...）
-         → 流式 delta 到，每累积 ~80 字符增量更新 DB
-         → 完成/停止/断连 → 替换占位符为最终内容
+uvicorn main:app --reload --port 8000
 ```
 
-前端检测到占位符即展示 loading 状态，与当前是否正在 SSE 流式无关，解决刷新页面、切换会话后 loading 丢失的问题。
+API 文档：http://localhost:8000/api/docs
 
-**停止 vs 断连**：
-- 用户点击停止 → `/stop` 端点设内存标记 → 中断流式，写入已收到内容
-- 浏览器刷新断开 → `finally` 块兜底写入已有内容
+## 配置项
 
-### chat_store.py
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `KNOWLEDGE_BASE_ROOT` | 自动推导到相邻 `hermes-data` | 知识库根目录 |
+| `DATABASE_PATH` | `backend/data/app.db` | 用户、Token、对话和结晶记录数据库 |
+| `HERMES_GATEWAY_URL` | `http://localhost:8642` | Hermes Gateway |
+| `HERMES_API_KEY` | 空 | Gateway Bearer Token |
+| `USE_HERMES_CHAT` | `auto` | `auto`、`true` 或 `false` |
+| `DEFAULT_CHAT_MODEL` | `hermes-agent` | 默认逻辑模型 |
+| `HERMES_WEBHOOK_URL` | Gateway 同主机的 `8644` | Hermes Webhook 地址 |
+| `HERMES_WEBHOOK_SECRET` | 空 | 结晶 HMAC Secret |
+| `HERMES_WEBHOOK_ROUTE` | `crystallize` | 结晶路由 |
+| `USER_MANAGEMENT_MODE` | `local` | `local` 或 `odoo` |
+| `ODOO_SSO_JWT_SECRET` | 空 | Odoo JWT 共享密钥 |
 
-- `append_messages()`：批量插入用户 + assistant 消息，同时更新会话名称和 `updated_at`
-- `update_last_message()`：用于流式中间阶段更新 assistant 消息内容
-- 消息按 `sort_order` 排列，保证顺序
+## SQLite 数据
 
-### knowledge_store.py
+| 表 | 内容 |
+|----|------|
+| `users` | 用户、密码哈希、账号来源和管理员标记 |
+| `auth_tokens` | Access/Refresh Token、有效期和 `token_version` |
+| `user_permissions` | 工作台、文件管理、关系图、概况、对话、设置和用户管理权限 |
+| `chat_sessions` | 用户会话、模型、创建和更新时间 |
+| `chat_messages` | 消息正文、角色、顺序、时间和回复耗时 |
+| `crystallize_submissions` | 结晶消息 ID、正文指纹、主题、交付 ID 和提交时间 |
 
-文件系统操作：
-- `raw/originals/` — 原始上传文件
-- `raw/fulltext/` — 全文索引
-- `raw/inbox/` — 暂存区
-- `wiki/entities/` `wiki/topics/` `wiki/sources/` — Wiki 分类页面
+默认账号：
 
-文件上传去重：SQLite manifest（`.upload_manifest.db`）记录 MD5 哈希，重复文件拒绝上传并返回已存在路径。
+- 管理员：`admin` / `admin123`
+- 普通用户：`user` / `user123`
 
-统计接口 `get_stats()`：按目录统计文件数量、未处理文件列表、MD5 重复文件组。
+数据库文件是运行时数据，不进入 Git。生产环境通过 `./data:/var/lib/llm-wiki-ui` 持久化。
 
-### wiki_index.py
+## 认证与权限
 
-反向链接索引：扫描 wiki/ 下所有 Markdown 文件，解析 `[[wikilink]]` 和 `[text](path)` 语法，建立出链/入链映射。支持局部图聚焦和全量图谱数据。
+### 本地模式
 
-## 新增接口速查
+- 用户名和密码登录。
+- 管理员可以创建、修改和删除普通用户。
+- 管理员拥有全部模块权限。
+- 修改用户密码或权限时递增 `token_version`，使旧 Token 失效。
+- 当前产品只维护一个管理员，普通用户不支持赋予用户管理权限。
 
-| 端点 | 说明 |
-|------|------|
-| `GET /api/auth/config` | 返回当前 `userManagementMode`（`local` / `odoo`） |
-| `GET /api/auth/odoo/callback?token=...` | Odoo JWT SSO 回调（仅 odoo 模式可用） |
+### Odoo 模式
+
+- `USER_MANAGEMENT_MODE=odoo` 时启用 Odoo 入口行为。
+- `/api/auth/odoo/callback` 验证 HS256 JWT，根据 `external_id` 查找或创建用户。
+- Odoo 普通用户不能使用本地密码登录。
+- 管理员账号仍可登录并查看用户列表。
+
+## 对话链路
+
+### 会话隔离
+
+本地每个会话使用独立 Hermes Session Key：
+
+```text
+agent:main:webui:user:{user_id}:session:{session_id}
+```
+
+同一用户的新对话不会复用其他本地会话的 Hermes 上下文。
+
+### SSE 流程
+
+```text
+收到用户消息
+  → 写入用户消息和 assistant 占位符
+  → 调用 Hermes /v1/chat/completions（stream=true）
+  → 转发 started / step / delta
+  → 每累计约 80 个 delta 片段更新 SQLite
+  → 完成、停止、错误或断连时统一写入最终正文和 reply_duration_ms
+  → 发送 done 或 stopped 最终会话
+```
+
+Hermes 返回错误时，后端先完成数据库收尾，再发送 `error` 和最终 `stopped` 事件，避免前端显示内容与历史记录不一致。
+
+## 对话结晶
+
+调用链：
+
+```text
+浏览器
+  → POST /api/chat/crystallize
+  → FastAPI 校验重复并生成 HMAC 请求
+  → POST {HERMES_WEBHOOK_URL}/webhooks/{route}
+  → Hermes 返回 202，Agent 异步写入知识库
+```
+
+关键规则：
+
+- HMAC Secret 仅存在于后端环境变量，不返回给浏览器。
+- 优先按同一 `message_id` 判断重复，再按规范化正文指纹判断。
+- `topic` 不参与正文指纹计算。
+- 正文指纹使用 MD5，定位为内网非对抗场景的精确重复检查，不作为加密或安全签名。
+- 前端可以明确选择强制再次提交。
+
+## 知识库与上传
+
+### 上传目录
+
+允许写入：
+
+- `raw/originals/`
+- `raw/originals/maintenance/manuals/`
+- `raw/originals/maintenance/procedures/`
+- `raw/originals/maintenance/records/`
+- `raw/originals/maintenance/faults/`
+- `raw/inbox/`
+
+目标目录必须是 `raw/originals` 本身或其真实子目录，字符串伪前缀不会被接受。
+
+### 上传清单
+
+知识库根目录中的 `.upload_manifest.db` 保存原件路径、MD5、大小和上传时间。
+
+- 上传前按 MD5 检查重复内容。
+- 启动时补录外部直接放入的原件。
+- 启动时删除文件已不存在的清单记录。
+- 查重时会继续寻找同 MD5 的其他真实文件，不会被失效记录阻塞。
+
+### 处理阶段
+
+| 阶段 | 判断依据 |
+|------|----------|
+| `uploaded` | 原件位于 `raw/originals/` |
+| `fulltext` | 对应 `raw/fulltext/maintenance/{category}/{stem}.md` 存在 |
+| `wiki` | Wiki 页面通过来源字段、路径或文件名引用原件 |
+
+## Wiki 索引
+
+`wiki_index.py` 扫描 `wiki/**/*.md` 并构建：
+
+- 页面内容与标题索引。
+- Wikilink 出链与反向链接。
+- 搜索数据。
+- 关系图节点和边。
+- 原件到 Wiki 页面的倒排引用。
+
+同名文件名或 frontmatter 标题按以下顺序稳定解析：
+
+1. `wiki/entities/`
+2. `wiki/topics/`
+3. `wiki/sources/`
+4. 其他 Wiki 路径
+
+完整路径链接始终优先指向指定文件。
+
+## API 路由
+
+| 前缀 | 主要能力 |
+|------|----------|
+| `/api/auth` | 登录、刷新、登出、账号配置、用户和权限、Odoo 回调 |
+| `/api/chat` | 配置、模型、会话、消息、SSE、停止和结晶 |
+| `/api/wiki` | 文件树、页面读取、编辑、搜索、关系图、统计、下载和文件管理删除 |
+| `/api/upload` | 上传配置、原件目录和原件上传 |
+
+具体请求与响应模型以 `/api/docs` 为准。
+
+## 验证
+
+```bash
+python3 -m py_compile *.py routers/*.py
+```
+
+生产发布还应执行根目录 [RELEASE.md](../RELEASE.md) 中的验证清单。

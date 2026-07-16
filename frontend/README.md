@@ -1,198 +1,207 @@
-# llm-wiki-ui 前端
+# LLM-Wiki UI 前端
 
-React + TypeScript + Tailwind CSS + shadcn/ui 构建的知识库管理与 AI 对话界面。
+版本：**1.0.0**
 
-## 模块一览
+前端使用 React 18、TypeScript、Vite、Tailwind CSS、Radix UI 和 lucide-react，提供知识库、关系图、对话、设置与用户管理界面。
 
+## 开发命令
+
+```bash
+npm ci
+npm run dev
+npm run build
+npm run preview
 ```
+
+- 开发地址：http://localhost:5173
+- Vite 开发代理：`/api` → `http://localhost:8000`
+- 生产环境：由 nginx 同源提供前端和 `/api`
+
+前端没有运行时 API 地址切换页面。默认使用同源 API；特殊构建环境可以设置 `VITE_API_BASE`。
+
+## 目录结构
+
+```text
 frontend/src/
-├── main.tsx                          # ReactDOM 入口，挂载 #root
-├── App.tsx                           # 根组件：路由、登录态、响应式布局
+├── App.tsx
+├── main.tsx
 ├── pages/
-│   ├── Chat.tsx                      # 对话页（核心）：流式 SSE、会话管理、模型切换
-│   ├── LLMWiki.tsx                   # 知识库标签页容器（权限感知）
-│   ├── Login.tsx                     # 登录页
-│   └── Settings.tsx                  # 设置页（通用/LLM-Wiki/帮助）
+│   ├── Login.tsx
+│   ├── Chat.tsx
+│   ├── LLMWiki.tsx
+│   └── Settings.tsx
 ├── components/
 │   ├── chat/
-│   │   ├── ChatMarkdown.tsx          # Markdown 渲染（react-markdown）
-│   │   └── ChatThinkingSteps.tsx     # 思考步骤折叠面板 + 模型处理计时
+│   │   ├── ChatMarkdown.tsx
+│   │   └── ChatThinkingSteps.tsx
 │   ├── layout/
-│   │   ├── Sidebar.tsx               # 主导航侧栏（权限过滤）
-│   │   ├── SiteHeader.tsx            # 页面顶栏（面包屑 + Tab + 操作按钮）
-│   │   ├── UserAvatar.tsx            # 用户头像
-│   │   └── UserInfo.tsx              # 用户信息卡片
-│   ├── wiki/                         # 知识库组件
-│   │   ├── WikiWorkbench.tsx         # 工作台：文件树 + Markdown 编辑/预览
-│   │   ├── WikiRawFilesPanel.tsx     # 文件管理：上传、拖放、处理状态
-│   │   ├── WikiGraphView.tsx         # 知识图谱：SVG 力导向图可视化
-│   │   ├── WikiSearchPanel.tsx       # 概况统计：分类卡片、管线状态、重复检测
-│   │   ├── WikiFileTree.tsx          # 递归文件树
-│   │   ├── WikiMarkdownPreview.tsx   # Markdown 预览
-│   │   ├── WikiPathBreadcrumb.tsx    # 路径面包屑
-│   │   ├── wikiGraphForce.ts         # 力导向图模拟算法
-│   │   ├── wikiGraphGrowth.ts        # 生长动画
-│   │   └── obsidianGraphTheme.ts     # 图谱视觉主题
-│   ├── settings/                     # 设置子组件
-│   │   ├── GeneralSettingsTab.tsx    # 通用（主题/通知/退出登录）
-│   │   ├── LlmWikiSettingsTab.tsx    # LLM-Wiki 配置
-│   │   ├── HelpTab.tsx               # 使用帮助（权限感知）
-│   │   ├── AccountManagementTab.tsx  # 用户管理
-│   │   ├── AccountSettingsTab.tsx    # 账号设置
-│   │   ├── ApiSettingsTab.tsx        # API 环境切换
-│   │   ├── UserFormDialog.tsx        # 用户表单弹窗
-│   │   └── UserPermissionsDialog.tsx # 权限配置弹窗
-│   └── ui/                           # shadcn/ui 基础组件
-├── services/                         # API 服务层
-│   ├── api.ts                        # HTTP 基础封装（fetch + auth headers + 401 处理）
-│   ├── authSession.ts                # 登录态管理（token 持久化、刷新、跨窗口同步）
-│   ├── chatApi.ts                    # 对话 API（CRUD + SSE 流式 + 401 自动刷新）
-│   ├── wikiApi.ts                    # 知识库 API（读写、图谱、搜索、下载）
-│   ├── uploadApi.ts                  # 文件上传（XMLHttpRequest 进度反馈）
-│   ├── users.ts                      # 用户管理 API
-│   ├── generalSettings.ts            # 通用设置 localStorage 读写
-│   ├── llmWikiSettings.ts            # LLM-Wiki 设置 localStorage 读写
-│   └── wikiGraphFilter.ts            # 图谱筛选/降噪算法
+│   │   ├── Sidebar.tsx
+│   │   ├── SiteHeader.tsx
+│   │   ├── UserAvatar.tsx
+│   │   └── UserInfo.tsx
+│   ├── settings/
+│   │   ├── GeneralSettingsTab.tsx
+│   │   ├── LlmWikiSettingsTab.tsx
+│   │   ├── HelpTab.tsx
+│   │   ├── AccountManagementTab.tsx
+│   │   ├── AccountSettingsTab.tsx
+│   │   ├── UserFormDialog.tsx
+│   │   └── UserPermissionsDialog.tsx
+│   ├── wiki/
+│   │   ├── WikiWorkbench.tsx
+│   │   ├── WikiRawFilesPanel.tsx
+│   │   ├── WikiGraphView.tsx
+│   │   ├── WikiSearchPanel.tsx
+│   │   ├── FilePreviewDialog.tsx
+│   │   ├── WikiMarkdownPreview.tsx
+│   │   ├── WikiFileTree.tsx
+│   │   ├── OriginalsDirTree.tsx
+│   │   ├── wikiGraphForce.ts
+│   │   ├── wikiGraphGrowth.ts
+│   │   ├── wikiPathResolve.ts
+│   │   └── useGraphTouchGestures.ts
+│   └── ui/
+├── services/
+│   ├── api.ts
+│   ├── authSession.ts
+│   ├── chatApi.ts
+│   ├── wikiApi.ts
+│   ├── uploadApi.ts
+│   ├── users.ts
+│   └── wikiGraphFilter.ts
 ├── shared/
-│   ├── constants.ts                  # 页面常量、标签、STREAMING_PLACEHOLDER 约定
-│   ├── types.ts                      # 共享类型定义
-│   └── utils/
-│       └── apiConfig.ts              # API 环境配置
-├── contexts/
-│   └── ChatHeaderExtras.tsx          # Chat 页顶栏扩展插槽 Context
-├── lib/
-│   └── utils.ts                      # 通用工具函数（cn、路径、分类标签）
-└── styles/
-    └── index.css                      # Tailwind 基础 + 全局样式 + prose 排版
+│   ├── constants.ts
+│   └── types.ts
+└── lib/utils.ts
 ```
 
-## 核心实现
+## 页面与导航
 
-### App.tsx — 根组件
+### 登录
 
-- **路由**：Login / LLMWiki / Chat / Settings / AccountManagement 五个页面，条件渲染
-- **登录态**：localStorage + `AUTH_EXPIRED_EVENT` / `AUTH_STATE_CHANGED` 自定义事件
-- **响应式**：`useIsMobile()` hook 监听 1024px 断点，桌面侧栏 / 移动端 Sheet 抽屉
-- **跨窗口同步**：`storage` 事件监听其他窗口登录态变更
-- **权限驱动**：登录后获取权限，决定默认首页和可见模块
-- **Odoo SSO**：Login 页通过 `useOdooCallback` hook 自动检测 URL 参数 `?odoo_token=...`，调用后端回调完成自动登录
+- 本地模式支持用户名密码登录。
+- Odoo 模式支持 URL 中的 JWT 回调登录。
+- Access Token 失效时自动使用 Refresh Token 重试。
+- 多窗口通过浏览器事件同步登录状态。
 
-### 用户管理模式
+### 主侧栏
 
-`/api/auth/config` 返回 `userManagementMode`（`local` / `odoo`），前端各组件据此调整行为：
+- 按用户权限隐藏无权访问的模块。
+- 账号卡片下方显示前端版本号。
+- 移动端使用抽屉式导航。
 
-| 模式 | 登录方式 | 侧栏用户管理 | 用户管理页 | 帮助页 |
-|------|---------|-------------|-----------|--------|
-| `local` | 用户名 + 密码 | 有权限即显示 | 完整 CRUD | 完整使用指南 |
-| `odoo` | Odoo JWT SSO 跳转 | 仅管理员可见 | 管理员只读，非管理员不可操作 | Odoo 定制版（访问流程 + 功能模块 + 账号说明） |
+### 设置
 
-关键判断：管理员 (`is_superuser=true`) 在任何模式下都通用，odoo 模式下管理员仍可查看用户列表但不可编辑；普通用户只能在匹配模式（`account_source`）下登录。
+- 通用：主题、通知、版本信息和退出登录。
+- LLM-Wiki：知识库显示偏好和相关本地设置。
+- 帮助：按当前用户管理模式展示使用说明。
+- 不提供 API 环境或远程服务器切换功能。
 
-### Chat.tsx — 对话页
+## 知识库模块
 
-**流式对话流程**：
-1. 用户发送 → 构建 optimistic 消息（用户 + 空 assistant）→ 立即渲染
-2. `streamChatMessageWithAuth()` → POST `/api/chat/sessions/:id/messages/stream` → SSE 逐 chunk 读取
-3. `delta` 事件追加文本，`step` 事件更新思考步骤，`done`/`stopped` 持久化
-4. 401 → 自动 refresh token → 重试；refresh 失败 → 广播登录失效
+### 工作台
 
-**流式占位符约定（STREAMING_PLACEHOLDER）**：
+- 左侧按实体、主题、摘要、结晶分类展示 Wiki 文件。
+- 右侧提供 Markdown 预览、编辑和反向链接。
+- 支持从 Markdown Wikilink 打开其他页面。
+- 支持从当前页面跳转关系图并聚焦节点。
+- 桌面端可调整文件树宽度，移动端使用抽屉文件树。
 
-后端流式开始前写入 DB 的 assistant 消息 content 为约定占位符字符串，前端 `isStreamingMessage()` 检测到该值即展示 loading。流式完成/中断后后端替换为实际内容。
+### 文件管理
 
-这解决了：
-- 切换会话：切回后消息 content 仍是占位符 → 显示 loading（即使不在当前 SSE 流中）
-- 刷新页面：占位符仍在 DB 中 → 重新加载会话后显示 loading（提示"对话中断"）
-- 对话完成：后端已替换占位符为实际内容 → 正常显示
+- 浏览 `raw/originals`、`raw/fulltext` 和 `raw/inbox`。
+- 支持文件和文件夹拖放上传，最多三个任务并发。
+- 展示待处理、全文已提取和已生成 Wiki 的状态。
+- 支持文本类文件在线预览，二进制文件下载查看。
+- 预览弹窗直接读取文件管理传入的真实路径，Markdown 内部链接独立使用 Wiki 标题解析。
+- 文件和目录删除只在文件管理模块提供。
 
-**消息渲染**：
-- 用户消息：右侧对齐，深色气泡，`max-w-[92%]` / 桌面 `85%`
-- 助手消息：左侧对齐，浅色气泡 + 头像图标，可能包含 `ChatThinkingSteps` + `ChatMarkdown`
-- 模型中：最后一条 assistant 消息显示 loading spinner 和计时"模型处理中(xx秒)"
+### 关系图
 
-**会话管理**：
-- 新建对话规则：已有空会话（messageCount=0）则直接跳转，不重复创建
-- 删除：确认弹窗，级联删除关联消息
+- SVG 二维力导向布局，不使用 D3。
+- 节点分为实体、主题、摘要和其他组。
+- 节点间受力按图跳数衰减，每增加一跳减半。
+- 拖拽节点时高亮自身和一级邻居，其他节点降低透明度。
+- 拖拽点紧跟指针；松开后恢复其他节点并向邻居传播衰减扰动。
+- 支持搜索、分组筛选、局部图、标签透明度、节点大小和边宽设置。
+- 生长动画支持随时终止并以扩散收尾；自动缩放按节点总数和动态画布计算。
+- 移动端支持单指节点拖拽、画布平移、双指缩放和双击节点预览。
 
-**模型处理计时**（ChatThinkingSteps）：
+### 概况
 
-处理过程折叠面板在流式状态下显示实时计时器"模型处理中(xx秒)"，从第一个 step 的 `startedAt` 开始计时，每 200ms 刷新。完成后显示各步骤单独耗时。
+- 展示原件、全文、实体、主题和摘要统计。
+- 展示处理管线阶段和待处理文件。
+- 展示分类分布与 MD5 重复文件组。
+- 移动端卡片和内容区域限制宽度，避免横向溢出。
 
-### 知识库组件
+## 对话模块
 
-**WikiWorkbench** — 工作台：
-- 左侧文件树（桌面固定/移动 Sheet），右侧 Markdown 预览/编辑/反向链接 三 Tab
-- 桌面侧栏可拖拽调整宽度，持久化至 localStorage
+### 会话与流式输出
 
-**WikiSearchPanel** — 概况：
-- 顶部统计卡片（原件/Wiki/摘要/Entities/Topics）
-- 文件分布条形图（纯 CSS，无图表库）
-- 处理管线进度（阶段一原件→全文，阶段二全文→实体）
-- 重复文件检测（MD5 分组展示）
+1. 创建或选择本地会话。
+2. 前端先插入用户消息和 assistant 占位消息。
+3. `chatApi.ts` 读取后端 SSE。
+4. `started` 更新用户消息，`step` 更新处理步骤，`delta` 追加正文。
+5. `done` 或 `stopped` 使用后端最终会话覆盖本地状态。
+6. 网络中止时重新读取会话，恢复后端已保存的部分正文。
 
-**WikiGraphView** — 知识图谱：
-- SVG 渲染力导向图（手动实现物理模拟，非 D3）
-- 缩放/拖拽/节点拖拽固定/生长动画
-- 局部图/全局图切换、节点组筛选
+后端写入的 `STREAMING_PLACEHOLDER` 用于刷新或切换会话后识别仍未完成的助手消息。
 
-**WikiRawFilesPanel** — 文件管理：
-- 三分类导航（文件/全文/暂存）+ 上传列表
-- 拖放上传（支持文件夹结构保留）、并发队列（最多 3 个）
-- 文件状态图标（待处理/全文已提取/已生成实体）
+### 助手消息
 
-### Sidebar.tsx — 主导航侧栏
+- 正文使用 Markdown 渲染。
+- 正文与底部信息区有独立间距和视觉分隔。
+- 风险提示标签显示“该内容由大模型生成，仅供参考，风险操作请务必核对”。
+- 耗时标签在生成过程中实时计时，完成后使用数据库中的 `replyDurationMs` 持久展示。
+- 时间统一显示年月日和时分。
+- 结晶按钮位于独立操作行。
 
-- 启动时请求 `/api/auth/config` 获取用户管理模式
-- 管理员在所有模式下均可见"用户管理"入口
-- 非管理员仅在 `local` 模式下且有 `can_manage_accounts` 权限时可见
-- Odoo 模式 + 非管理员：用户管理入口隐藏
-- 其他导航项按权限字段过滤
+### 对话结晶
 
-### Login.tsx — 登录页
+- 点击结晶按钮先打开二次确认弹窗。
+- 弹窗展示主题、会话 ID、用户问题和完整助手回复。
+- 助手正文区域可单独滚动，弹窗外层不重复滚动。
+- 提交失败和重复提示显示在确认弹窗内部。
+- 打开弹窗和会话加载时查询已结晶状态。
+- 重复判断支持同一消息和相同正文；主题不参与正文去重。
+- 用户可以明确选择强制提交。
+- 浏览器只调用 BFF，不直接调用 Hermes `8644` Webhook。
 
-- 支持本地用户名密码登录（`local` 模式）
-- `useOdooCallback` hook：检测 URL 参数 `?odoo_token=...`，自动调用 Odoo SSO 回调完成登录，成功后清除 URL 参数
-- Odoo 模式下显示提示条"请通过 Odoo 菜单访问"
-- 修复：`is_superuser` 存储前转为布尔字符串（`String(Boolean(...))`），避免 SQLite 整数 `1` 被存为 `"1"` 导致 `=== 'true'` 永远为 `false`
+## API 与认证服务
 
-### AccountManagementTab.tsx — 用户管理
+`services/api.ts` 统一处理：
 
-- 支持 `local` / `odoo` 两种模式
-- Odoo 模式下隐藏添加、编辑、删除、权限按钮，状态列对非管理员显示"由 Odoo 管理"
-- 管理员在任何模式下均可见所有操作按钮
-- 桌面端表格 + 移动端卡片列表双布局
+- 同源 URL 拼接。
+- 认证请求头。
+- `401` 后刷新 Token 并重试一次。
+- 刷新失败时广播登录失效。
+- 后端错误信息解析。
 
-### HelpTab.tsx — 使用帮助
+流式 SSE、上传进度和文件下载分别由专用服务处理，因为它们不能完全复用普通 JSON 请求封装。
 
-- 按 `userManagementMode` 渲染不同内容
-- `local` 模式：完整使用指南（工作流程 + 六个功能模块 + 权限说明）
-- `odoo` 模式：定制帮助（Odoo 访问流程 + 功能模块同 local + 账号说明）
+## 响应式约定
 
-### 设置模块
+- 主布局和页面容器必须使用 `min-w-0`，避免 Flex 子项撑宽。
+- 页面级容器控制溢出，内部滚动区承担滚动。
+- 对话代码块和长文本允许换行或局部横向滚动。
+- 移动端输入框字号不低于 16px，避免 iOS 自动缩放。
+- 关系图触摸逻辑位于 `useGraphTouchGestures.ts`，与桌面鼠标事件分离。
 
-- **通用**：主题切换（亮/暗/跟随系统）、通知开关、退出登录
-- **LLM-Wiki**：知识库子目录、上下文字符上限、Query 只读模式、上传登记
-- **帮助**：见上方 HelpTab 说明
-- **用户管理**：见上方 AccountManagementTab 说明
+详见 [移动端适配说明](../mob.md)。
 
-### 设置模块
+## 版本维护
 
-- **通用**：主题切换（亮/暗/跟随系统）、通知开关、退出登录
-- **LLM-Wiki**：知识库子目录、上下文字符上限、Query 只读模式、上传登记
-- **帮助**：见上方 HelpTab 说明
-- **用户管理**：见上方 AccountManagementTab 说明
+版本号需要同时更新：
 
-### 响应式策略
+- `package.json`
+- `package-lock.json`
+- `src/shared/constants.ts`
 
+发布前执行：
+
+```bash
+npm ci
+npm run build
 ```
-CSS 层：
-  html, body, #root: max-width:100%; overflow-x:hidden
-  ScrollArea viewport: h-full + overflow-hidden
 
-组件层：
-  App Shell:          w-full max-w-full min-w-0
-  页面内容:             flex-1 min-w-0 overflow-hidden
-  对话消息:             min-w-0 + overflow-x-hidden + relative
-  代码块:               whitespace-pre-wrap（移动端换行）
-  输入框:               font-size: 16px（移动端防 iOS Safari 缩放）
-```
+完整流程见 [RELEASE.md](../RELEASE.md)。

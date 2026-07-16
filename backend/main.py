@@ -18,7 +18,9 @@ _migrate_manifest()  # 启动时一次性扫描文件并计算 MD5
 app = FastAPI(
     title="LLM-Wiki 前端 API",
     description="Hongtai AI Hub — 知识库浏览、原件上传、LLM-Wiki 对话",
-    version="0.2.0",
+    version="1.0.0",
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
 )
 
 app.add_middleware(
