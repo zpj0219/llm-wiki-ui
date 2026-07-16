@@ -268,6 +268,7 @@ export function WikiGraphView({
   const alphaRef = useRef(1);
   const panRef = useRef({ active: false, x: 0, y: 0, tx: 0, ty: 0 });
   const dragRef = useRef<{ id: string; x: number; y: number; moved: boolean } | null>(null);
+  const suppressMouseNodeActivationUntilRef = useRef(0);
   /** 触摸节点拖动状态独立于鼠标 dragRef，避免两套输入互相污染。 */
   const touchDraggingRef = useRef(false);
   /** 手动识别双击：pointer capture 时原生 dblclick 有时不可靠 */
@@ -1298,6 +1299,7 @@ export function WikiGraphView({
     if (draggedId) {
       const node = simRef.current.find((n) => n.id === draggedId);
       if (wasDragMove) {
+        suppressMouseNodeActivationUntilRef.current = performance.now() + 350;
         if (node) {
           // 松手后保持钉住：否则中心力/连线会把点弹回原位
           node.fixed = true;
@@ -1655,7 +1657,10 @@ export function WikiGraphView({
                       }}
                       onPointerDown={(ev) => handleNodePointerDown(ev, node.id)}
                       onClick={(ev) => {
-                        if (touchGestures.shouldSuppressClick()) {
+                        if (
+                          touchGestures.shouldSuppressClick()
+                          || performance.now() < suppressMouseNodeActivationUntilRef.current
+                        ) {
                           ev.preventDefault();
                           ev.stopPropagation();
                           return;
@@ -1665,7 +1670,10 @@ export function WikiGraphView({
                       onDoubleClick={(ev) => {
                         ev.preventDefault();
                         ev.stopPropagation();
-                        if (touchGestures.shouldSuppressClick()) return;
+                        if (
+                          touchGestures.shouldSuppressClick()
+                          || performance.now() < suppressMouseNodeActivationUntilRef.current
+                        ) return;
                         openNodePreview(node.relPath);
                       }}
                     >
