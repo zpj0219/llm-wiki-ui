@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import uuid
 import asyncio
+import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable, Iterator
 
@@ -150,6 +151,7 @@ def send_message(user_id: str, session_id: str, content: str) -> dict[str, Any] 
     user_msg = {"id": str(uuid.uuid4()), "role": "user", "content": text, "timestamp": now}
     model = session.get("modelId") or DEFAULT_CHAT_MODEL
     api_messages = _build_api_messages(session, text)
+    reply_started_at = time.monotonic()
 
     try:
         reply = chat_completions(api_messages, model, session_key=_session_key(user_id))
@@ -161,6 +163,7 @@ def send_message(user_id: str, session_id: str, content: str) -> dict[str, Any] 
         "role": "assistant",
         "content": reply,
         "timestamp": _now_iso(),
+        "replyDurationMs": max(0, round((time.monotonic() - reply_started_at) * 1000)),
     }
 
     updated = append_messages(
@@ -201,6 +204,7 @@ def stream_message(
     user_msg = {"id": str(uuid.uuid4()), "role": "user", "content": text, "timestamp": now}
     model = session.get("modelId") or DEFAULT_CHAT_MODEL
     api_messages = _build_api_messages(session, text)
+    reply_started_at = time.monotonic()
 
     def _persist(parts: list[str], *, stopped: bool) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         full = "".join(parts) if parts else ("（已停止生成）" if stopped else "（无回复内容）")
@@ -209,6 +213,7 @@ def stream_message(
             "role": "assistant",
             "content": full,
             "timestamp": _now_iso(),
+            "replyDurationMs": max(0, round((time.monotonic() - reply_started_at) * 1000)),
         }
         updated = append_messages(
             user_id,
@@ -311,6 +316,7 @@ async def stream_message_async(
     assistant_msg_id = placeholder["id"]
     model = session.get("modelId") or DEFAULT_CHAT_MODEL
     api_messages = _build_api_messages(session, text)
+    reply_started_at = time.monotonic()
 
     async def _iter() -> AsyncIterator[dict[str, Any]]:
         parts: list[str] = []
@@ -318,15 +324,32 @@ async def stream_message_async(
         last_flush_len = 0  # 上次写入 DB 的 parts 长度
 
         # 内容写入SQLite的辅助函数
-        def _write_content(content: str) -> None:
+        def _write_content(
+            content: str,
+            *,
+            completed_timestamp: str | None = None,
+            reply_duration_ms: int | None = None,
+        ) -> None:
             with get_connection() as conn:
-                conn.execute(
-                    "UPDATE chat_messages SET content = ? WHERE id = ?",
-                    (content, assistant_msg_id),
-                )
+                if completed_timestamp is None:
+                    conn.execute(
+                        "UPDATE chat_messages SET content = ? WHERE id = ?",
+                        (content, assistant_msg_id),
+                    )
+                    updated_at = _now_iso()
+                else:
+                    conn.execute(
+                        """
+                        UPDATE chat_messages
+                        SET content = ?, timestamp = ?, reply_duration_ms = ?
+                        WHERE id = ?
+                        """,
+                        (content, completed_timestamp, reply_duration_ms, assistant_msg_id),
+                    )
+                    updated_at = completed_timestamp
                 conn.execute(
                     "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
-                    (_now_iso(), session_id),
+                    (updated_at, session_id),
                 )
                 conn.commit()
 
@@ -336,13 +359,20 @@ async def stream_message_async(
                 return None, None
             finalized = True
             full = "".join(parts) if parts else ("（已停止生成）" if stopped else "（对话中断）")
-            _write_content(full)
+            completed_timestamp = _now_iso()
+            reply_duration_ms = max(0, round((time.monotonic() - reply_started_at) * 1000))
+            _write_content(
+                full,
+                completed_timestamp=completed_timestamp,
+                reply_duration_ms=reply_duration_ms,
+            )
             updated_session = store_get(user_id, session_id)
             assistant_msg = {
                 "id": assistant_msg_id,
                 "role": "assistant",
                 "content": full,
-                "timestamp": _now_iso(),
+                "timestamp": completed_timestamp,
+                "replyDurationMs": reply_duration_ms,
             }
             return updated_session, assistant_msg
 
@@ -363,8 +393,13 @@ async def stream_message_async(
                 if is_cancelled and is_cancelled():
                     break
                 if _is_stopped(session_id):
-                    yield {"type": "stopped", "session": _serialize(session), "assistantMessage": {"id": "", "role": "assistant", "content": "（已停止）", "timestamp": _now_iso()}}
-                    _finalize(stopped=True)
+                    updated, assistant_msg = _finalize(stopped=True)
+                    if updated and assistant_msg:
+                        yield {
+                            "type": "stopped",
+                            "session": _serialize(updated),
+                            "assistantMessage": assistant_msg,
+                        }
                     return
                 if chunk.get("type") == "delta":
                     delta = str(chunk.get("delta") or "")

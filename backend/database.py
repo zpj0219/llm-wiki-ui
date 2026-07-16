@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     timestamp TEXT NOT NULL,
+    reply_duration_ms INTEGER,
     sort_order INTEGER NOT NULL,
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
 );
@@ -132,6 +133,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE chat_sessions ADD COLUMN model_id TEXT NOT NULL DEFAULT 'hermes-agent'"
         )
+    message_cols = {row[1] for row in conn.execute("PRAGMA table_info(chat_messages)").fetchall()}
+    if "reply_duration_ms" not in message_cols:
+        conn.execute("ALTER TABLE chat_messages ADD COLUMN reply_duration_ms INTEGER")
     # 迁移：为 users 表添加 token_version（如果不存在）
     user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "token_version" not in user_cols:

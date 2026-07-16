@@ -25,7 +25,7 @@ def _default_session_name(messages: list[dict[str, Any]]) -> str:
 def _load_messages(conn, session_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT id, role, content, timestamp
+        SELECT id, role, content, timestamp, reply_duration_ms
         FROM chat_messages
         WHERE session_id = ?
         ORDER BY sort_order
@@ -38,6 +38,11 @@ def _load_messages(conn, session_id: str) -> list[dict[str, Any]]:
             "role": r["role"],
             "content": r["content"],
             "timestamp": r["timestamp"],
+            **(
+                {"replyDurationMs": r["reply_duration_ms"]}
+                if r["reply_duration_ms"] is not None
+                else {}
+            ),
         }
         for r in rows
     ]
@@ -199,8 +204,10 @@ def append_messages(
         for i, msg in enumerate((user_msg, assistant_msg)):
             conn.execute(
                 """
-                INSERT INTO chat_messages (id, session_id, role, content, timestamp, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO chat_messages (
+                    id, session_id, role, content, timestamp, reply_duration_ms, sort_order
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     msg["id"],
@@ -208,6 +215,7 @@ def append_messages(
                     msg["role"],
                     msg["content"],
                     msg["timestamp"],
+                    msg.get("replyDurationMs"),
                     max_order + 1 + i,
                 ),
             )

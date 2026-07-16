@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
+  Clock3,
   Loader2,
   MessageSquare,
   Plus,
@@ -48,12 +50,34 @@ import type { ChatMessage, ChatModel, ChatSession, ChatSessionSummary, ChatStep 
 import { STREAMING_PLACEHOLDER } from '@shared/constants';
 import { useChatHeaderExtras } from '@/contexts/ChatHeaderExtras';
 
-function formatTime(iso: string): string {
+function formatDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
   } catch {
     return '';
   }
+}
+
+function formatReplyDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0.1, ms / 1000).toFixed(1)}s`;
+
+  const totalSeconds = Math.max(1, Math.round(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}min`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+  return parts.join(' ');
 }
 
 function upsertChatStep(steps: ChatStep[], step: ChatStep): ChatStep[] {
@@ -102,7 +126,9 @@ function mergeSessionWithSteps(session: ChatSession, steps: ChatStep[]): ChatSes
   return {
     ...session,
     messages: session.messages.map((m, i, arr) =>
-      m.role === 'assistant' && i === arr.length - 1 ? { ...m, steps } : m
+      m.role === 'assistant' && i === arr.length - 1
+        ? { ...m, steps }
+        : m
     ),
   };
 }
@@ -455,8 +481,9 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
     setInput('');
     requestAnimationFrame(() => adjustTextareaHeight());
 
-    const userMsgId = `user-${Date.now()}`;
-    const assistantId = `asst-${Date.now()}`;
+    const messageStartedAt = Date.now();
+    const userMsgId = `user-${messageStartedAt}`;
+    const assistantId = `asst-${messageStartedAt}`;
     const now = new Date().toISOString();
     const optimisticUser: ChatMessage = {
       id: userMsgId,
@@ -543,7 +570,8 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
         );
       } else if (event.type === 'done' || event.type === 'stopped') {
         doneOrStopped = true;
-        applySessionUpdate(mergeSessionWithSteps(event.session, streamStepsRef.current));
+        const finalSteps = streamStepsRef.current;
+        applySessionUpdate(mergeSessionWithSteps(event.session, finalSteps));
         streamStepsRef.current = [];
       } else if (event.type === 'error') {
         setError(event.message);
@@ -559,7 +587,8 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
       await new Promise((resolve) => setTimeout(resolve, 250));
       const detail = await getChatSession(sessionId);
       if (detail.success && detail.session) {
-        applySessionUpdate(mergeSessionWithSteps(detail.session, streamStepsRef.current));
+        const finalSteps = streamStepsRef.current;
+        applySessionUpdate(mergeSessionWithSteps(detail.session, finalSteps));
       }
       streamStepsRef.current = [];
       return;
@@ -910,6 +939,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
             ) : (
               messages.map((message, index) => {
                 const isStreamingReply = isStreamingMessage(message, index, messages);
+                const replyDurationMs = message.replyDurationMs;
 
                 return (
                 <div
@@ -962,16 +992,20 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                     message.content &&
                     message.content !== STREAMING_PLACEHOLDER &&
                     !isStreamingReply ? (
-                      <div className="mt-1.5 flex flex-col gap-1 text-[10px] text-muted-foreground">
-                        <div className="flex items-start gap-2">
-                          <span className="min-w-0 flex-1 opacity-70 leading-snug">
-                            本回复由大模型生成，内容仅供参考，涉及风险操作请务必核对
+                      <div className="mt-3 flex flex-col gap-1.5 border-t border-border/60 pt-2 text-[10px] text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="inline-flex min-h-5 min-w-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 leading-none text-primary/80">
+                            <CircleAlert className="h-3 w-3 shrink-0" />
+                            该内容由大模型生成，仅供参考，风险操作请务必核对
                           </span>
-                          <span className="shrink-0 opacity-60 tabular-nums">
-                            {formatTime(message.timestamp)}
-                          </span>
+                          {replyDurationMs != null && (
+                            <span className="inline-flex min-h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 leading-none text-primary/80 tabular-nums">
+                              <Clock3 className="h-3 w-3 shrink-0" />
+                              {formatReplyDuration(replyDurationMs)}
+                            </span>
+                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1">
                           <Button
                             type="button"
                             size="sm"
@@ -1007,18 +1041,21 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
                               失败
                             </span>
                           )}
+                          <span className="ml-auto shrink-0 whitespace-nowrap text-[10px] leading-none opacity-60 tabular-nums">
+                            {formatDateTime(message.timestamp)}
+                          </span>
                         </div>
                       </div>
                     ) : (
                       <p
                         className={cn(
-                          'text-[10px] mt-1.5 opacity-60',
+                          'mt-1.5 whitespace-nowrap text-[10px] opacity-60 tabular-nums',
                           message.role === 'user'
                             ? 'text-primary-foreground text-right'
                             : 'text-muted-foreground'
                         )}
                       >
-                        {formatTime(message.timestamp)}
+                        {formatDateTime(message.timestamp)}
                       </p>
                     )}
                   </div>

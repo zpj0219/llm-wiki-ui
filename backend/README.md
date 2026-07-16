@@ -51,7 +51,7 @@ backend/
 - `users`：用户名、密码哈希（PBKDF2 SHA256）、邮箱、是否激活、是否超级管理员、`account_source`（`local`/`odoo`）、`external_id`（Odoo 用户关联）
 - `auth_tokens`：token + user_id + 过期时间 + token_version（密码修改后旧 token 失效）
 - `chat_sessions`：会话 id、user_id、名称、模型、创建/更新时间
-- `chat_messages`：消息 id、session_id、role、content、timestamp、sort_order
+- `chat_messages`：消息 id、session_id、role、content、timestamp、reply_duration_ms、sort_order
 - `user_permissions`：7 项布尔权限字段
 
 种子数据：`admin/admin123`（管理员）、`user/user123`（普通用户）。

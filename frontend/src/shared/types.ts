@@ -62,6 +62,8 @@ export type ChatMessage = {
   timestamp: string;
   /** 仅前端流式过程展示，不持久化到 SQLite */
   steps?: ChatStep[];
+  /** 从模型开始处理到流结束的总耗时，由后端持久化 */
+  replyDurationMs?: number;
 };
 
 export type ChatModel = {
