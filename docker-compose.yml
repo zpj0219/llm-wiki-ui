@@ -6,7 +6,7 @@ services:
     image: llm-wiki-ui:latest
     container_name: llm-wiki-ui
     ports:
-      - "${APP_PORT:-3000}:80"
+      - "${APP_PORT:-3100}:80"
     restart: unless-stopped
     env_file:
       - .env
