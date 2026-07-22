@@ -218,6 +218,17 @@ def _tool_label(tool: str) -> str:
         "search": "搜索",
         "grep": "检索内容",
         "list_dir": "列出目录",
+        "skill_view": "查看 Skill",
+        "skills_list": "列出 Skill",
+        # Hongtai / Hermes MCP qmd 工具名（双下划线或单下划线）
+        "mcp__qmd__query": "知识库检索",
+        "mcp__qmd__get": "读取知识库文档",
+        "mcp__qmd__multi_get": "批量读取知识库",
+        "mcp__qmd__status": "知识库状态",
+        "mcp_qmd_query": "知识库检索",
+        "mcp_qmd_get": "读取知识库文档",
+        "mcp_qmd_multi_get": "批量读取知识库",
+        "mcp_qmd_status": "知识库状态",
     }
     return names.get(tool, tool or "工具")
 
@@ -283,7 +294,8 @@ def _parse_stream_events(event: dict[str, Any], sse_event: str) -> list[dict[str
     out: list[dict[str, Any]] = []
     etype = str(event.get("type") or event.get("event") or sse_event or "").strip()
 
-    if etype in ("hermes.tool.progress", "tool.progress"):
+    # Hermes 旧事件名 + Hongtai 新事件名（event: hongtai.tool.progress）
+    if etype in ("hermes.tool.progress", "hongtai.tool.progress", "tool.progress"):
         status_raw = str(event.get("status") or "running").lower()
         status: Literal["running", "completed"] = (
             "completed" if status_raw in ("completed", "complete", "done", "success") else "running"
