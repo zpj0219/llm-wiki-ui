@@ -230,7 +230,7 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
   const [chatProvider, setChatProvider] = useState<string>('…');
   const [hermesConnected, setHermesConnected] = useState(false);
   const [models, setModels] = useState<ChatModel[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState('hermes-agent');
+  const [selectedModelId, setSelectedModelId] = useState('');
   const [defaultModel, setDefaultModel] = useState('hermes-agent');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -313,16 +313,22 @@ export function ChatPage({ newSessionTrigger = 0 }: ChatPageProps) {
       setHermesConnected(Boolean(configRes.hermesConnected));
       if (configRes.defaultModel) {
         setDefaultModel(configRes.defaultModel);
-        setSelectedModelId((prev) =>
-          prev === 'hermes-agent' && configRes.defaultModel ? configRes.defaultModel : prev
-        );
       }
     }
-    if (modelsRes.success && modelsRes.models.length > 0) {
-      setModels(modelsRes.models);
-      if (modelsRes.defaultModel) setDefaultModel(modelsRes.defaultModel);
-    } else if (configRes.defaultModel) {
-      setModels([{ id: configRes.defaultModel, name: configRes.defaultModel }]);
+    const availableModels =
+      modelsRes.success && modelsRes.models.length > 0
+        ? modelsRes.models
+        : configRes.defaultModel
+          ? [{ id: configRes.defaultModel, name: configRes.defaultModel }]
+          : [];
+    if (modelsRes.defaultModel) setDefaultModel(modelsRes.defaultModel);
+    if (availableModels.length > 0) {
+      setModels(availableModels);
+      setSelectedModelId((prev) =>
+        prev && availableModels.some((model) => model.id === prev)
+          ? prev
+          : availableModels[0].id
+      );
     }
   }, []);
 

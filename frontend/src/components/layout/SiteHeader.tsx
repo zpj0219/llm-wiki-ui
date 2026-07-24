@@ -65,7 +65,7 @@ export function SiteHeader({
   return (
     <header
       className={cn(
-        'shrink-0 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-sm',
+        'relative z-10 shrink-0 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-sm',
         currentPage === PAGES.CHAT
           ? 'grid grid-cols-[1fr_auto] items-center gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(160px,16rem)_minmax(0,1fr)] lg:gap-4'
           : 'flex items-center justify-between gap-4 flex-wrap'
